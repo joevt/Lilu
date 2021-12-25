@@ -330,7 +330,7 @@ void KernelPatcher::applyLookupPatch(const LookupPatch *patch, uint8_t *starting
 		endingAddress = startingAddress + maxSize;
 	endingAddress -= patch->size;
 
-	size_t changes {0};
+	size_t i = 0, changes = 0;
 
 	if (MachInfo::setKernelWriting(true, kernelWriteLock) != KERN_SUCCESS) {
 		SYSLOG("patcher", "lookup patching failed to write to kernel");
@@ -338,15 +338,24 @@ void KernelPatcher::applyLookupPatch(const LookupPatch *patch, uint8_t *starting
 		return;
 	}
 
-	for (size_t i = 0; currentAddress < endingAddress && (i < patch->count || patch->count == 0); i++) {
-		while (currentAddress < endingAddress && memcmp(currentAddress, patch->find, patch->size) != 0)
-			currentAddress++;
-
-		if (currentAddress != endingAddress) {
-			for (size_t j = 0; j < patch->size; j++)
-				currentAddress[j] = patch->replace[j];
-			changes++;
+	while (currentAddress < endingAddress) {
+		for (i = 0; i < patch->size; i++) {
+			uint8_t mask = patch->maskFind ? patch->maskFind[i] : 0xFF;
+			if ((currentAddress[i] & mask) != (patch->find[i] & mask))
+				break;
 		}
+		if (i == patch->size) {
+			for (i = 0; i < patch->size; i++) {
+				uint8_t mask = patch->maskReplace ? patch->maskReplace[i] : 0xFF;
+				currentAddress[i] = (currentAddress[i] & ~mask) | (patch->replace[i] & mask);
+			}
+			changes++;
+			if (patch->count && changes >= patch->count)
+				break;
+			currentAddress += patch->size;
+		}
+		else
+			currentAddress++;
 	}
 
 	if (MachInfo::setKernelWriting(false, kernelWriteLock) != KERN_SUCCESS) {
