@@ -54,6 +54,9 @@ void PRODUCT_NAME::stop(IOService *provider) {
 
 EXPORT extern "C" kern_return_t ADDPR(kern_start)(kmod_info_t *, void *) {
 	// This is an ugly hack necessary on some systems where buffering kills most of debug output.
+
+	SYSLOG("init", "[ kern_start");
+
 	lilu_get_boot_args("liludelay", &ADDPR(debugPrintDelay), sizeof(ADDPR(debugPrintDelay)));
 
 	auto error = lilu.requestAccess();
@@ -63,7 +66,7 @@ EXPORT extern "C" kern_return_t ADDPR(kern_start)(kmod_info_t *, void *) {
 								ADDPR(config).maxKernel, ADDPR(debugEnabled));
 
 		if (error == LiluAPI::Error::NoError) {
-			DBGLOG("init", "%s bootstrap %s", xStringify(PRODUCT_NAME), kextVersion);
+			SYSLOG("init", "%s bootstrap %s", xStringify(PRODUCT_NAME), kextVersion);
 			(void)kextVersion;
 			ADDPR(startSuccess) = true;
 			ADDPR(config).pluginStart();
@@ -88,6 +91,7 @@ EXPORT extern "C" kern_return_t ADDPR(kern_start)(kmod_info_t *, void *) {
 
 	// Report success but actually do not start and let I/O Kit unload us.
 	// This works better and increases boot speed in some cases.
+	SYSLOG("init", "] kern_start KERN_SUCCESS");
 	return KERN_SUCCESS;
 }
 

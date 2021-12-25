@@ -172,6 +172,7 @@ public:
 	 *  Initialise kernel and user patchers from policy handler
 	 */
 	void policyInit(const char *name) {
+        DBGLOG("config", "[ policyInit %s", name);
 		(void)name;
 
 		// Outer check is used here to avoid unnecessary locking after we initialise
@@ -183,6 +184,7 @@ public:
 			}
 			IOLockUnlock(policyLock);
 		}
+        DBGLOG("config", "] policyInit %s", name);
 	}
 	
 	/**

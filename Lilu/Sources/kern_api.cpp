@@ -36,16 +36,23 @@ void LiluAPI::deinit() {
 }
 
 LiluAPI::Error LiluAPI::requestAccess(size_t version, bool check) {
-	if (!ADDPR(config).startSuccess)
+
+	DBGLOG("api", "[ LiluAPI::requestAccess (%lu, %d)", version, check);
+
+	if (!ADDPR(config).startSuccess) {
+		DBGLOG("api", "] LiluAPI::requestAccess (%lu, %d) Offline", version, check);
 		return Error::Offline;
+	}
 
 	constexpr size_t currversion = parseModuleVersion(xStringify(MODULE_VERSION));
 	if (version > currversion) {
+		DBGLOG("api", "] LiluAPI::requestAccess (%lu, %d) UnsupportedFeature", version, check);
 		return Error::UnsupportedFeature;
 	}
 
 	if (check) {
 		if (!IOLockTryLock(access)) {
+			DBGLOG("api", "] LiluAPI::requestAccess (%lu, %d) LockError", version, check);
 			return Error::LockError;
 		}
 	} else {
@@ -54,9 +61,11 @@ LiluAPI::Error LiluAPI::requestAccess(size_t version, bool check) {
 
 	if (apiRequestsOver) {
 		IOLockUnlock(access);
+		DBGLOG("api", "] LiluAPI::requestAccess (%lu, %d) TooLate", version, check);
 		return Error::TooLate;
 	}
 
+	DBGLOG("api", "] LiluAPI::requestAccess (%lu, %d) NoError", version, check);
 	return Error::NoError;
 }
 
@@ -235,12 +244,17 @@ LiluAPI::Error LiluAPI::onEntitlementRequest(t_entitlementRequested callback, vo
 
 void LiluAPI::finaliseRequests() {
 	// Block any new requests
+	DBGLOG("api", "[ LiluAPI::finaliseRequests");
+
 	IOLockLock(access);
 	apiRequestsOver = true;
+	DBGLOG("api", "LiluAPI::finaliseRequests apiRequestsOver = true");
 	IOLockUnlock(access);
+	DBGLOG("api", "] LiluAPI::finaliseRequests");
 }
 
 void LiluAPI::processPatcherLoadCallbacks(KernelPatcher &patcher) {
+	DBGLOG("api", "[ LiluAPI::processPatcherLoadCallbacks %x", &patcher);
 	// Process the callbacks
 	for (size_t i = 0; i < patcherLoadedCallbacks.size(); i++) {
 		auto p = patcherLoadedCallbacks[i];
@@ -324,6 +338,8 @@ void LiluAPI::processPatcherLoadCallbacks(KernelPatcher &patcher) {
 
 	// We no longer need to load kexts, forget about prelinked
 	patcher.freeFileBufferResources();
+
+	DBGLOG("api", "] LiluAPI::processPatcherLoadCallbacks");
 }
 
 void LiluAPI::processKextLoadCallbacks(KernelPatcher &patcher, size_t id, mach_vm_address_t slide, size_t size, bool reloadable) {

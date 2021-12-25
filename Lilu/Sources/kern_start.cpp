@@ -69,12 +69,14 @@ void PRODUCT_NAME::stop(IOService *provider) {
 Configuration ADDPR(config);
 
 bool Configuration::performEarlyInit() {
+	DBGLOG("config", "[ Configuration::performEarlyInit");
 	kernelPatcher.init();
 
 	if (kernelPatcher.getError() != KernelPatcher::Error::NoError) {
 		DBGLOG("config", "failed to initialise kernel patcher");
 		kernelPatcher.deinit();
 		kernelPatcher.clearError();
+		DBGLOG("config", "] Configuration::performEarlyInit false");
 		return false;
 	}
 
@@ -83,9 +85,11 @@ bool Configuration::performEarlyInit() {
 		SYSLOG("config", "failed to initialise through console routing");
 		kernelPatcher.deinit();
 		kernelPatcher.clearError();
+		DBGLOG("config", "] Configuration::performEarlyInit false");
 		return false;
 	}
 
+	DBGLOG("config", "] Configuration::performEarlyInit true");
 	return true;
 }
 
@@ -114,6 +118,7 @@ int Configuration::initConsole(PE_Video *info, int op) {
 }
 
 bool Configuration::performCommonInit() {
+	DBGLOG("config", "[ Configuration::performCommonInit");
 	DeviceInfo::createCached();
 
 	lilu.processPatcherLoadCallbacks(kernelPatcher);
@@ -127,6 +132,7 @@ bool Configuration::performCommonInit() {
 		userPatcher.deinit();
 		kernelPatcher.deinit();
 		kernelPatcher.clearError();
+		DBGLOG("config", "] Configuration::performCommonInit false");
 		return false;
 	}
 
@@ -134,22 +140,27 @@ bool Configuration::performCommonInit() {
 
 	lilu.activate(kernelPatcher, userPatcher);
 
+	DBGLOG("config", "] Configuration::performCommonInit true");
 	return true;
 }
 
 bool Configuration::performInit() {
+	DBGLOG("config", "[ Configuration::performInit");
 	kernelPatcher.init();
 
 	if (kernelPatcher.getError() != KernelPatcher::Error::NoError) {
 		DBGLOG("config", "failed to initialise kernel patcher");
 		kernelPatcher.deinit();
 		kernelPatcher.clearError();
+		DBGLOG("config", "] Configuration::performInit false");
 		return false;
 	}
 
 	lilu.finaliseRequests();
 
-	return performCommonInit();
+	bool result = performCommonInit();
+	DBGLOG("config", "] Configuration::performInit %d", result);
+	return result;
 }
 
 #if defined(__x86_64__)
