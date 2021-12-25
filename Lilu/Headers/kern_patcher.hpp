@@ -354,6 +354,8 @@ public:
 		const uint8_t *replace;
 		size_t size;
 		size_t count;
+		const uint8_t *maskFind;
+		const uint8_t *maskReplace;
 	};
 
 	/**
