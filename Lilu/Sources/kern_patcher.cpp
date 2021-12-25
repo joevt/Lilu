@@ -91,10 +91,12 @@ void KernelPatcher::deinit() {
 }
 
 size_t KernelPatcher::loadKinfo(const char *id, const char * const paths[], size_t num, bool isKernel, bool fsonly, bool fsfallback) {
+	DBGLOG("patcher", "[ KernelPatcher::loadKinfo %s", id);
 	for (size_t i = 0; i < kinfos.size(); i++) {
 		if (kinfos[i]->objectId && !strcmp(kinfos[i]->objectId, id)) {
 			DBGLOG("patcher", "found an already loaded MachInfo for %s at %lu", id, i);
 			code = Error::AlreadyDone;
+			DBGLOG("patcher", "] KernelPatcher::loadKinfo %s", id);
 			return i;
 		}
 	}
@@ -120,6 +122,7 @@ size_t KernelPatcher::loadKinfo(const char *id, const char * const paths[], size
 		SYSLOG("patcher", "unable to store loaded MachInfo for %s", id);
 		code = Error::MemoryIssue;
 	} else {
+		DBGLOG("patcher", "] KernelPatcher::loadKinfo %s kinfos.last", id);
 		return kinfos.last();
 	}
 
@@ -128,6 +131,7 @@ size_t KernelPatcher::loadKinfo(const char *id, const char * const paths[], size
 		MachInfo::deleter(info);
 	}
 
+	DBGLOG("patcher", "] KernelPatcher::loadKinfo %s invalid", id);
 	return INVALID;
 }
 
@@ -138,9 +142,11 @@ size_t KernelPatcher::loadKinfo(KernelPatcher::KextInfo *info) {
 		code = Error::MemoryIssue;
 		return INVALID;
 	}
+	DBGLOG("patcher", "[ KernelPatcher::loadKinfo %s", info->id);
 
 	if (info->loadIndex != KernelPatcher::KextInfo::Unloaded) {
 		DBGLOG("patcher", "provided KextInfo (%s) has already been loaded at %lu index", info->id, info->loadIndex);
+		DBGLOG("patcher", "] KernelPatcher::loadKinfo %s", info->id);
 		return info->loadIndex;
 	}
 
@@ -151,6 +157,7 @@ size_t KernelPatcher::loadKinfo(KernelPatcher::KextInfo *info) {
 		DBGLOG("patcher", "loaded kinfo %s at %lu index", info->id, idx);
 	}
 
+	DBGLOG("patcher", "] KernelPatcher::loadKinfo %s", info->id);
 	return idx;
 }
 #endif /* KEXTPATH_SUPPORT */
