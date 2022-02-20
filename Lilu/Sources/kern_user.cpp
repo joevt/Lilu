@@ -732,45 +732,62 @@ size_t UserPatcher::mapAddresses(const char *mapBuf, MapEntry *mapEntries, size_
 	size_t nfound = 0;
 	const char *ptr = mapBuf;
 	while (*ptr) {
-		size_t i = 1;
-		if (*ptr == '\n') {
 			MapEntry *currEntry = nullptr;
+
+		//const char *lineStart = ptr;
 
 			for (size_t j = 0; j < nentries; j++) {
 				if (!mapEntries[j].filename)
 					continue;
-				if (!strncmp(&ptr[i], mapEntries[j].filename, mapEntries[j].length)) {
+			if (!strncmp(ptr, mapEntries[j].filename, mapEntries[j].length)) {
 					currEntry = &mapEntries[j];
-					i += mapEntries[j].length;
+				ptr += mapEntries[j].length;
 					break;
 				}
 			}
 
+		 // find section mappings or next line
+		for (; *ptr && *ptr != '\n'; ptr++) {};
+		if (!*ptr) break;
+
+		//DBGLOG("user", "line: %.*s", (int)(ptr - lineStart), lineStart);
+		ptr++;
+
 			if (currEntry) {
-				const char *text = strstr(&ptr[i], "__TEXT", strlen("__TEXT"));
-				if (text) {
-					i += strlen("__TEXT");
-					const char *arrow = strstr(&ptr[i], "->", strlen("->"));
-					if (arrow) {
-						currEntry->startTEXT = lilu_strtou(text + strlen("__TEXT") + 1, nullptr, 16);
-						currEntry->endTEXT = lilu_strtou(arrow + strlen("->") + 1, nullptr, 16);
+			bool foundSection = false;
+			for (; *ptr == '\t'; ptr++) { // iterate section mappings
+				// find section name
+				for (ptr++; *ptr == ' '; ptr++) {}
+				const char *sectionName = ptr;
+				for (; *ptr && *ptr != ' '; ptr++) {}
+				if (!*ptr) break;
+				
+				// find section start
+				for (ptr++; *ptr == ' '; ptr++) {}
+				const char *sectionStart = ptr;
+				for (; *ptr && *ptr != ' '; ptr++) {}
+				if (!*ptr) break;
+				
+				// find section end
+				const char *sectionEnd = nullptr;
+				if (!strncmp(ptr, " -> ", strlen(" -> "))) { ptr += strlen(" -> "); sectionEnd = ptr; }
+				for (; *ptr && *ptr != '\n'; ptr++) {}
+				if (!sectionEnd) break;
+				if (!*ptr) break;
 
-						const char *data = strstr(&ptr[i], "__DATA", strlen("__DATA"));
-						if (data) {
-							i += strlen("__DATA");
-							arrow = strstr(&ptr[i], "->", strlen("->"));
-							if (arrow) {
-								currEntry->startDATA = lilu_strtou(data + strlen("__DATA") + 1, nullptr, 16);
-								currEntry->endDATA = lilu_strtou(arrow + strlen("->") + 1, nullptr, 16);
-							}
-						}
-
-						nfound++;
-					}
+				if (!strncmp(sectionName, "__TEXT ", strlen("__TEXT "))) {
+					currEntry->startTEXT = lilu_strtou(sectionStart, nullptr, 16);
+					currEntry->endTEXT = lilu_strtou(sectionEnd, nullptr, 16);
+					foundSection = true;
+				}
+				else if (!strncmp(sectionName, "__DATA ", strlen("__DATA "))) {
+					currEntry->startDATA = lilu_strtou(sectionStart, nullptr, 16);
+					currEntry->endDATA = lilu_strtou(sectionEnd, nullptr, 16);
+					foundSection = true;
 				}
 			}
+			if (foundSection) nfound++;
 		}
-		ptr += i;
 	}
 
 	DBGLOG("user", "] UserPatcher::mapAddresses found:%d", nfound);
