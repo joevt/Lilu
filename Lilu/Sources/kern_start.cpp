@@ -256,7 +256,7 @@ bool Configuration::getBootArguments() {
 	betaForAll = checkKernelArgument(bootargBetaAll);
 	debugForAll = checkKernelArgument(bootargDebugAll);
 	isUserDisabled = checkKernelArgument(bootargUserOff) ||
-		getKernelVersion() <= KernelVersion::SnowLeopard || getKernelVersion() >= KernelVersion::BigSur;
+		getKernelVersion() <= KernelVersion::SnowLeopard; // || getKernelVersion() >= KernelVersion::BigSur;
 
 	lilu_get_boot_args(bootargDelay, &ADDPR(debugPrintDelay), sizeof(ADDPR(debugPrintDelay)));
 
