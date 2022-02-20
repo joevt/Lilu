@@ -103,8 +103,10 @@ int UserPatcher::execListener(kauth_cred_t, void *idata, kauth_action_t action, 
 }
 
 bool UserPatcher::init(KernelPatcher &kernelPatcher, bool preferSlowMode) {
+	DBGLOG("user", "[ UserPatcher::init preferSlowMode:%d", preferSlowMode);
 	if (ADDPR(config).isUserDisabled) {
 		SYSLOG_COND(ADDPR(debugEnabled), "user", "disabling user patcher on request!");
+		DBGLOG("user", "] UserPatcher::init true");
 		return true;
 	}
 
@@ -118,16 +120,21 @@ bool UserPatcher::init(KernelPatcher &kernelPatcher, bool preferSlowMode) {
 
 	if (!listener) {
 		SYSLOG("user", "failed to register a listener");
+		DBGLOG("user", "] UserPatcher::init false");
 		return false;
 	}
 
+	DBGLOG("user", "] UserPatcher::init true");
 	return true;
 }
 
 bool UserPatcher::registerPatches(ProcInfo **procs, size_t procNum, BinaryModInfo **mods, size_t modNum, t_BinaryLoaded callback, void *user) {
 	// Silently return if disabled
-	if (ADDPR(config).isUserDisabled)
+	DBGLOG("user", "[ UserPatcher::registerPatches");
+	if (ADDPR(config).isUserDisabled) {
+		DBGLOG("user", "] UserPatcher::registerPatches true");
 		return true;
+	}
 
 	procInfo = procs;
 	procInfoSize = procNum;
@@ -144,7 +151,9 @@ bool UserPatcher::registerPatches(ProcInfo **procs, size_t procNum, BinaryModInf
 		}
 	}
 
-	return loadFilesForPatching() && (!patchDyldSharedCache || loadDyldSharedCacheMapping()) && loadLookups() && hookMemoryAccess();
+	bool result = loadFilesForPatching() && (!patchDyldSharedCache || loadDyldSharedCacheMapping()) && loadLookups() && hookMemoryAccess();
+	DBGLOG("user", "] UserPatcher::registerPatches %s", result ? "true" : "false");
+	return result;
 }
 
 void UserPatcher::deinit() {
@@ -274,6 +283,8 @@ boolean_t UserPatcher::codeSignValidateRangeWrapper(void *blobs, memory_object_t
 }
 
 void UserPatcher::onPath(const char *path, uint32_t len) {
+	static unsigned int NumPaths = 0;
+	NumPaths++;
 	if (len >= currentMinProcLength) {
 		for (uint32_t i = 0; i < procInfoSize; i++) {
 			auto p = procInfo[i];
@@ -283,6 +294,7 @@ void UserPatcher::onPath(const char *path, uint32_t len) {
 					(match == ProcInfo::MatchPrefix && !strncmp(p->path, path, p->len)) ||
 					(match == ProcInfo::MatchSuffix && !strncmp(p->path, path + (len - p->len), p->len+1)) ||
 					(match == ProcInfo::MatchAny && strstr(path, p->path))) {
+					DBGLOG("user", "[ UserPatcher::onPath %d; info #%d", NumPaths, i);
 					DBGLOG("user", "caught %s performing injection", path);
 					if (orgTaskSetMainThreadQos) {
 						DBGLOG("user", "requesting delayed patch " PRIKADDR, CASTKADDR(current_thread()));
@@ -314,6 +326,7 @@ void UserPatcher::onPath(const char *path, uint32_t len) {
 						patchBinary(orgCurrentMap(), path, len);
 					}
 
+					DBGLOG("user", "] UserPatcher::onPath");
 					return;
 				}
 			}
@@ -344,6 +357,7 @@ bool UserPatcher::getTaskHeader(vm_map_t taskPort, mach_header_64 &header) {
 }
 
 bool UserPatcher::injectRestrict(vm_map_t taskPort) {
+	DBGLOG("user", "[ UserPatcher::injectRestrict");
 	// Get task's mach-o header and determine its cpu type
 	auto baseAddr = orgGetMapMin(taskPort);
 
@@ -385,6 +399,7 @@ bool UserPatcher::injectRestrict(vm_map_t taskPort) {
 					auto res = vmProtect(taskPort, (vm_offset_t)prots[i].off, PAGE_SIZE, FALSE, prots[i].val|VM_PROT_WRITE);
 					if (res != KERN_SUCCESS) {
 						SYSLOG("user", "failed to change memory protection (%lu, %d)", i, res);
+						DBGLOG("user", "] UserPatcher::injectRestrict true");
 						return true;
 					}
 				}
@@ -400,6 +415,7 @@ bool UserPatcher::injectRestrict(vm_map_t taskPort) {
 			auto res = orgVmMapWriteUser(taskPort, &newCombVal, ncmdsAddr, sizeof(uint64_t));
 			if (res != KERN_SUCCESS) {
 				SYSLOG("user", "failed to change mach header (%d)", res);
+				DBGLOG("user", "] UserPatcher::injectRestrict true");
 				return true;
 			}
 
@@ -412,6 +428,7 @@ bool UserPatcher::injectRestrict(vm_map_t taskPort) {
 				if (res != KERN_SUCCESS) {
 					SYSLOG("user", "failed to restore mach header (%d), this process will crash...", res);
 				}
+				DBGLOG("user", "] UserPatcher::injectRestrict true");
 				return true;
 			}
 
@@ -421,6 +438,7 @@ bool UserPatcher::injectRestrict(vm_map_t taskPort) {
 					res = vmProtect(taskPort, (vm_offset_t)prots[i].off, PAGE_SIZE, FALSE, prots[i].val);
 					if (res != KERN_SUCCESS) {
 						SYSLOG("user", "failed to restore memory protection (%lu, %d)", i, res);
+						DBGLOG("user", "] UserPatcher::injectRestrict true");
 						return true;
 					}
 				}
@@ -431,9 +449,11 @@ bool UserPatcher::injectRestrict(vm_map_t taskPort) {
 		}
 	} else {
 		SYSLOG("user", "could not read target mach-o header (error %d)", err);
+		DBGLOG("user", "] UserPatcher::injectRestrict false");
 		return false;
 	}
 
+	DBGLOG("user", "] UserPatcher::injectRestrict true");
 	return true;
 }
 
@@ -616,14 +636,17 @@ void UserPatcher::taskSetMainThreadQos(task_t task, thread_t main_thread) {
 
 	auto entry = that->pending.get();
 	if (entry) {
+		DBGLOG("user", "[ UserPatcher::taskSetMainThreadQos");
 		DBGTRACE("user", "firing hook from task_set_main_thread_qos " PRIKADDR, CASTKADDR(current_thread()));
 		that->patchBinary(that->orgGetTaskMap(task), (*entry)->path, (*entry)->pathLen);
 		PANIC_COND(!that->pending.erase(), "user", "failed to remove pending user patch in task_set_main_thread_qos");
 		delete *entry;
+		DBGLOG("user", "] UserPatcher::taskSetMainThreadQos");
 	}
 }
 
 void UserPatcher::patchSharedCache(vm_map_t taskPort, uint32_t slide, cpu_type_t cpu, bool applyChanges) {
+	DBGLOG("user", "[ UserPatcher::patchSharedCache applyChanges:%d", applyChanges);
 	// Save the slide for restoration
 	if (applyChanges && !sharedCacheSlideStored) {
 		storedSharedCacheSlide = slide;
@@ -696,11 +719,15 @@ void UserPatcher::patchSharedCache(vm_map_t taskPort, uint32_t slide, cpu_type_t
 			}
 		}
 	}
+	DBGLOG("user", "] UserPatcher::patchSharedCache");
 }
 
 size_t UserPatcher::mapAddresses(const char *mapBuf, MapEntry *mapEntries, size_t nentries) {
-	if (nentries == 0 || !mapBuf)
+	DBGLOG("user", "[ UserPatcher::mapAddresses nentries:%d", nentries);
+	if (nentries == 0 || !mapBuf) {
+		DBGLOG("user", "] UserPatcher::mapAddresses (no entries)");
 		return 0;
+	}
 
 	size_t nfound = 0;
 	const char *ptr = mapBuf;
@@ -746,14 +773,17 @@ size_t UserPatcher::mapAddresses(const char *mapBuf, MapEntry *mapEntries, size_
 		ptr += i;
 	}
 
+	DBGLOG("user", "] UserPatcher::mapAddresses found:%d", nfound);
 	return nfound;
 }
 
 bool UserPatcher::loadDyldSharedCacheMapping() {
-	DBGLOG("user", "loadDyldSharedCacheMapping %lu", binaryModSize);
+	DBGLOG("user", "[ UserPatcher::loadDyldSharedCacheMapping %lu", binaryModSize);
 
-	if (binaryModSize == 0)
+	if (binaryModSize == 0) {
+		DBGLOG("user", "] UserPatcher::loadDyldSharedCacheMapping true");
 		return true;
+	}
 
 	uint8_t *buffer {nullptr};
 	size_t bufferSize {0};
@@ -788,6 +818,7 @@ bool UserPatcher::loadDyldSharedCacheMapping() {
 				DBGLOG("user", "mapped %lu entries out of %lu", nEntries, binaryModSize);
 
 				for (size_t i = 0; i < binaryModSize; i++) {
+					DBGLOG("user", "entry:%d TEXT:%llX..%llX DATA:%llX..%llX", nEntries, entries[i].startTEXT, entries[i].endTEXT, entries[i].startDATA, entries[i].endDATA);
 					binaryMod[i]->startTEXT = entries[i].startTEXT;
 					binaryMod[i]->endTEXT = entries[i].endTEXT;
 					binaryMod[i]->startDATA = entries[i].startDATA;
@@ -811,11 +842,12 @@ bool UserPatcher::loadDyldSharedCacheMapping() {
 
 	if (buffer) Buffer::deleter(buffer);
 
+	DBGLOG("user", "] UserPatcher::loadDyldSharedCacheMapping result:%d", res);
 	return res;
 }
 
 bool UserPatcher::loadFilesForPatching() {
-	DBGLOG("user", "loadFilesForPatching %lu", binaryModSize);
+	DBGLOG("user", "[ UserPatcher::loadFilesForPatching %lu", binaryModSize);
 
 	for (size_t i = 0; i < binaryModSize; i++) {
 		bool hasPatches = false;
@@ -969,10 +1001,12 @@ bool UserPatcher::loadFilesForPatching() {
 			Buffer::deleter(buf);
 		}
 	}
+	DBGLOG("user", "] UserPatcher::loadFilesForPatching true");
 	return true;
 }
 
 bool UserPatcher::loadLookups() {
+	DBGLOG("user", "[ UserPatcher::loadLookups");
 	uint32_t off = 0;
 
 	for (size_t i = 0; i < Lookup::matchNum; i++) {
@@ -1039,6 +1073,7 @@ bool UserPatcher::loadLookups() {
 
 	}
 
+	DBGLOG("user", "] UserPatcher::loadLookups true");
 	return true;
 }
 
@@ -1055,12 +1090,14 @@ vm_prot_t UserPatcher::getPageProtection(vm_map_t map, vm_map_address_t addr) {
 }
 
 bool UserPatcher::hookMemoryAccess() {
+	DBGLOG("user", "[ UserPatcher::hookMemoryAccess");
 	// 10.12 and newer
 	KernelPatcher::RouteRequest rangeRoute {"_cs_validate_range", codeSignValidateRangeWrapper, orgCodeSignValidateRangeWrapper};
 	if (!patcher->routeMultipleLong(KernelPatcher::KernelID, &rangeRoute, 1)) {
 		KernelPatcher::RouteRequest pageRoute {"_cs_validate_page", codeSignValidatePageWrapper, orgCodeSignValidatePageWrapper};
 		if (!patcher->routeMultipleLong(KernelPatcher::KernelID, &pageRoute, 1)) {
 			SYSLOG("user", "failed to resolve _cs_validate function");
+			DBGLOG("user", "] UserPatcher::hookMemoryAccess false");
 			return false;
 		}
 	}
@@ -1069,6 +1106,7 @@ bool UserPatcher::hookMemoryAccess() {
 	if (patcher->getError() != KernelPatcher::Error::NoError) {
 		SYSLOG("user", "failed to resolve _current_map");
 		patcher->clearError();
+		DBGLOG("user", "] UserPatcher::hookMemoryAccess false");
 		return false;
 	}
 
@@ -1076,6 +1114,7 @@ bool UserPatcher::hookMemoryAccess() {
 	if (patcher->getError() != KernelPatcher::Error::NoError) {
 		SYSLOG("user", "failed to resolve _get_map_min");
 		patcher->clearError();
+		DBGLOG("user", "] UserPatcher::hookMemoryAccess false");
 		return false;
 	}
 
@@ -1083,6 +1122,7 @@ bool UserPatcher::hookMemoryAccess() {
 	if (patcher->getError() != KernelPatcher::Error::NoError) {
 		SYSLOG("user", "failed to resolve _get_task_map");
 		patcher->clearError();
+		DBGLOG("user", "] UserPatcher::hookMemoryAccess false");
 		return false;
 	}
 
@@ -1097,6 +1137,7 @@ bool UserPatcher::hookMemoryAccess() {
 	if (patcher->getError() != KernelPatcher::Error::NoError) {
 		SYSLOG("user", "failed to resolve _vm_map_check_protection");
 		patcher->clearError();
+		DBGLOG("user", "] UserPatcher::hookMemoryAccess false");
 		return false;
 	}
 
@@ -1104,6 +1145,7 @@ bool UserPatcher::hookMemoryAccess() {
 	if (patcher->getError() != KernelPatcher::Error::NoError) {
 		SYSLOG("user", "failed to resolve _vm_map_read_user");
 		patcher->clearError();
+		DBGLOG("user", "] UserPatcher::hookMemoryAccess false");
 		return false;
 	}
 
@@ -1111,6 +1153,7 @@ bool UserPatcher::hookMemoryAccess() {
 	if (patcher->getError() != KernelPatcher::Error::NoError) {
 		SYSLOG("user", "failed to resolve _vm_map_write_user");
 		patcher->clearError();
+		DBGLOG("user", "] UserPatcher::hookMemoryAccess false");
 		return false;
 	}
 
@@ -1128,24 +1171,28 @@ bool UserPatcher::hookMemoryAccess() {
 		KernelPatcher::RouteRequest mapRoute {"_vm_shared_region_map_file", vmSharedRegionMapFile, orgVmSharedRegionMapFile};
 		if (!patcher->routeMultipleLong(KernelPatcher::KernelID, &mapRoute, 1)) {
 			SYSLOG("user", "failed to hook _vm_shared_region_map_file");
+			DBGLOG("user", "] UserPatcher::hookMemoryAccess false");
 			return false;
 		}
-		
+
 		if (getKernelVersion() >= KernelVersion::Mojave) {
 			KernelPatcher::RouteRequest sharedRegionRoute {"_vm_shared_region_slide", vmSharedRegionSlideMojave, orgVmSharedRegionSlideMojave};
 			if (!patcher->routeMultipleLong(KernelPatcher::KernelID, &sharedRegionRoute, 1)) {
 				SYSLOG("user", "failed to hook _vm_shared_region_slide");
+	            DBGLOG("user", "] UserPatcher::hookMemoryAccess false");
 				return false;
 			}
 		} else {
 			KernelPatcher::RouteRequest sharedRegionRoute {"_vm_shared_region_slide", vmSharedRegionSlide, orgVmSharedRegionSlide};
 			if (!patcher->routeMultipleLong(KernelPatcher::KernelID, &sharedRegionRoute, 1)) {
 				SYSLOG("user", "failed to hook _vm_shared_region_slide");
+				DBGLOG("user", "] UserPatcher::hookMemoryAccess false");
 				return false;
 			}
 		}
 	}
 
+	DBGLOG("user", "] UserPatcher::hookMemoryAccess true");
 	return true;
 }
 
@@ -1189,7 +1236,7 @@ bool UserPatcher::matchSharedCachePath(const char *path) {
 		if (path[0] >= '1' && path[0] <= '9')
 			path += 1;
 	}
-		
+
 
 	return path[0] == '\0';
 }

@@ -183,12 +183,14 @@ LiluAPI::Error LiluAPI::onKextLoad(KernelPatcher::KextInfo *infos, size_t num, t
 LiluAPI::Error LiluAPI::onProcLoad(UserPatcher::ProcInfo *infos, size_t num, UserPatcher::t_BinaryLoaded callback, void *user, UserPatcher::BinaryModInfo *mods, size_t modnum) {
 	// We do not officially support user patcher prior to 10.9, yet it seems to partially work
 
+	DBGLOG("api", "[ LiluAPI::onProcLoad");
 	// Store the callbacks
 	if (callback) {
 		auto *pcall = stored_pair<UserPatcher::t_BinaryLoaded>::create();
 
 		if (!pcall) {
 			SYSLOG("api", "failed to allocate memory for stored_pair<t_binaryLoaded>");
+			DBGLOG("api", "] LiluAPI::onProcLoad MemoryError");
 			return Error::MemoryError;
 		}
 
@@ -198,16 +200,25 @@ LiluAPI::Error LiluAPI::onProcLoad(UserPatcher::ProcInfo *infos, size_t num, Use
 		if (!binaryLoadedCallbacks.push_back<2>(pcall)) {
 			SYSLOG("api", "failed to store stored_pair<t_binaryLoaded>");
 			stored_pair<UserPatcher::t_BinaryLoaded>::deleter(pcall);
+			DBGLOG("api", "] LiluAPI::onProcLoad MemoryError");
 			return Error::MemoryError;
+		}
+		else {
+			DBGLOG("api", "stored callback");
 		}
 	}
 
 	// Filter disabled processes right away and store the rest
 	for (size_t i = 0; i < num; i++) {
-		if (infos[i].section != UserPatcher::ProcInfo::SectionDisabled &&
-			!storedProcs.push_back<2>(&infos[i])) {
-			SYSLOG("api", "failed to store ProcInfo");
-			return Error::MemoryError;
+		if (infos[i].section != UserPatcher::ProcInfo::SectionDisabled) {
+			if (!storedProcs.push_back<2>(&infos[i])) {
+				SYSLOG("api", "failed to store ProcInfo");
+				DBGLOG("api", "] LiluAPI::onProcLoad MemoryError");
+				return Error::MemoryError;
+			}
+			else {
+				DBGLOG("api", "stored ProcInfo[%d]: path:\"%s\"", i, infos[i].path);
+			}
 		}
 	}
 
@@ -215,10 +226,15 @@ LiluAPI::Error LiluAPI::onProcLoad(UserPatcher::ProcInfo *infos, size_t num, Use
 	for (size_t i = 0; i < modnum; i++) {
 		if (!storedBinaryMods.push_back<2>(&mods[i])) {
 			SYSLOG("api", "failed to store BinaryModInfo");
+			DBGLOG("api", "] LiluAPI::onProcLoad MemoryError");
 			return Error::MemoryError;
+		}
+		else {
+			DBGLOG("api", "stored BinaryModInfo[%d]: path:\"%s\"", i, mods[i].path);
 		}
 	}
 
+	DBGLOG("api", "] LiluAPI::onProcLoad NoError");
 	return Error::NoError;
 }
 
@@ -344,6 +360,7 @@ void LiluAPI::processPatcherLoadCallbacks(KernelPatcher &patcher) {
 
 void LiluAPI::processKextLoadCallbacks(KernelPatcher &patcher, size_t id, mach_vm_address_t slide, size_t size, bool reloadable) {
 	// Update running info
+	DBGLOG("api", "[ LiluAPI::processKextLoadCallbacks");
 	size = patcher.updateRunningInfo(id, slide, size, reloadable);
 
 	// Process the callbacks
@@ -351,10 +368,13 @@ void LiluAPI::processKextLoadCallbacks(KernelPatcher &patcher, size_t id, mach_v
 		auto p = kextLoadedCallbacks[i];
 		p->first(p->second, patcher, id, slide, size);
 	}
+	DBGLOG("api", "] LiluAPI::processKextLoadCallbacks");
 }
 
 void LiluAPI::processUserLoadCallbacks(UserPatcher &patcher) {
+	DBGLOG("api", "[ LiluAPI::processUserLoadCallbacks");
 	if (storedProcs.size() == 0 && storedBinaryMods.size() == 0) {
+		DBGLOG("api", "] LiluAPI::processUserLoadCallbacks (no storedProcs)");
 		return;
 	}
 
@@ -373,14 +393,17 @@ void LiluAPI::processUserLoadCallbacks(UserPatcher &patcher) {
 		}, this)) {
 		SYSLOG("api", "failed to register user patches");
 	}
+	DBGLOG("api", "] LiluAPI::processUserLoadCallbacks");
 }
 
 void LiluAPI::processBinaryLoadCallbacks(UserPatcher &patcher, vm_map_t map, const char *path, size_t len) {
 	// Process the callbacks
+	DBGLOG("api", "[ LiluAPI::processBinaryLoadCallbacks");
 	for (size_t i = 0; i < binaryLoadedCallbacks.size(); i++) {
 		auto p = binaryLoadedCallbacks[i];
 		p->first(p->second, patcher, map, path, len);
 	}
+	DBGLOG("api", "] LiluAPI::processBinaryLoadCallbacks");
 }
 
 OSObject *LiluAPI::copyClientEntitlement(task_t task, const char *entitlement) {
