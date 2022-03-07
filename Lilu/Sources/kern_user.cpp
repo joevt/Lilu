@@ -5,6 +5,7 @@
 //  Copyright © 2016-2017 vit9696. All rights reserved.
 //
 
+#include <Headers/kern_test.hpp>
 #include <Headers/kern_config.hpp>
 #include <Headers/kern_compat.hpp>
 #include <Headers/kern_user.hpp>
@@ -113,6 +114,7 @@ bool UserPatcher::init(KernelPatcher &kernelPatcher, bool preferSlowMode) {
 	that = this;
 	patchDyldSharedCache = !preferSlowMode;
 	patcher = &kernelPatcher;
+	get_kernel_externals(*patcher);
 
 	pending.init();
 
@@ -430,6 +432,13 @@ bool UserPatcher::injectRestrict(vm_map_t taskPort) {
 			auto res = orgVmMapWriteUser(taskPort, &newCombVal, ncmdsAddr, sizeof(uint64_t));
 			if (res != KERN_SUCCESS) {
 				SYSLOG("user", "failed to change mach header (%d)", res);
+#if 0 // test_* is currently only for BigSur 11.6.4
+				kern_return_t r2 = test_vm_map_write_user(taskPort, &newCombVal, ncmdsAddr, sizeof(uint64_t));
+				DBGLOG("user", "test_vm_map_write_user result:%d", r2);
+				if (r2 != KERN_SUCCESS) {
+
+				}
+#endif
 				DBGLOG("user", "] UserPatcher::injectRestrict true");
 				return true;
 			}
@@ -792,13 +801,13 @@ size_t UserPatcher::mapAddresses(const char *mapBuf, MapEntry *mapEntries, size_
 				const char *sectionName = ptr;
 				for (; *ptr && *ptr != ' '; ptr++) {}
 				if (!*ptr) break;
-				
+
 				// find section start
 				for (ptr++; *ptr == ' '; ptr++) {}
 				const char *sectionStart = ptr;
 				for (; *ptr && *ptr != ' '; ptr++) {}
 				if (!*ptr) break;
-				
+
 				// find section end
 				const char *sectionEnd = nullptr;
 				if (!strncmp(ptr, " -> ", strlen(" -> "))) { ptr += strlen(" -> "); sectionEnd = ptr; }
@@ -1183,7 +1192,7 @@ bool UserPatcher::vmSetMaxProtection(
 	// 10.15.7 Catalina      =                     int32:0x48 shift:10
 	// 11.6.4  Big Sur       =                     int32:0x48 shift:10
 	// 12.2.1  Monterey      =                     int32:0x48 shift:11
-	
+
 	int vme_flags_offset =
 #if defined(__i386__)
 		getKernelVersion() >= KernelVersion::Lion        ? 0x30 :
@@ -1192,7 +1201,7 @@ bool UserPatcher::vmSetMaxProtection(
 		getKernelVersion() >= KernelVersion::SnowLeopard ? 0x30 :
 #endif
 		0x24;
-	
+
 	// DWARF debug symbols (dSYM) for i386/x86_64 between 10.5 and 10.12 incorrectly shows bit offset of 19 which is the result of counting bits from the MSB instead of the LSB
 	// meaning the LSB (bit 0) is bit offset 31 in DWARF and bit 10 is bit offset 19 in DWARF.
 	// 19 = 32(int32 total bits) - 10(bit# counted from LSB) - 3(field width in bits)
@@ -1226,7 +1235,7 @@ bool UserPatcher::vmSetMaxProtection(
 
 		int old_max_protection = vme_max_protection(entry);
 		int new_max_protection = (old_max_protection & ~clear_protection) | set_protection;
-		
+
 		if (new_max_protection != old_max_protection) {
 			DBGLOG("user", "changed max protection of 0x%llx from %d to %d", start, old_max_protection, new_max_protection);
 			set_vme_max_protection(entry, new_max_protection);
@@ -1314,7 +1323,7 @@ bool UserPatcher::hookMemoryAccess() {
 		DBGLOG("user", "] UserPatcher::hookMemoryAccess false");
 		return false;
 	}
-	
+
 	// On 10.12.1 b4 Apple decided not to let current_map point to the current process
 	// For this reason we have to obtain the map with the other methods
 	if (getKernelVersion() >= KernelVersion::Sierra) {

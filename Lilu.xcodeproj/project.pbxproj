@@ -49,6 +49,8 @@
 		419163CB268FEC5900E58711 /* table32.h in Headers */ = {isa = PBXBuildFile; fileRef = 419163C8268FEC5800E58711 /* table32.h */; };
 		419163CC268FEC5900E58711 /* hde32.h in Headers */ = {isa = PBXBuildFile; fileRef = 419163C9268FEC5800E58711 /* hde32.h */; };
 		419163CD268FEC5900E58711 /* hde32.c in Sources */ = {isa = PBXBuildFile; fileRef = 419163CA268FEC5900E58711 /* hde32.c */; };
+		6381FB0127D0BAE000214F1D /* kern_test.hpp in Headers */ = {isa = PBXBuildFile; fileRef = 6381FB0027D0BAE000214F1D /* kern_test.hpp */; };
+		6381FB0227D0D71000214F1D /* kern_test.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 6381FAFC27D0B9C100214F1D /* kern_test.cpp */; };
 		6F86FA742526419900D37571 /* kern_version.hpp in Headers */ = {isa = PBXBuildFile; fileRef = 6F86FA732526419900D37571 /* kern_version.hpp */; };
 		CE1096261F22876B00B623FC /* umm_malloc.c in Sources */ = {isa = PBXBuildFile; fileRef = CE10961E1F22876B00B623FC /* umm_malloc.c */; };
 		CE1096271F22876B00B623FC /* umm_malloc.h in Headers */ = {isa = PBXBuildFile; fileRef = CE10961F1F22876B00B623FC /* umm_malloc.h */; };
@@ -149,6 +151,8 @@
 		419163C8268FEC5800E58711 /* table32.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = table32.h; sourceTree = "<group>"; };
 		419163C9268FEC5800E58711 /* hde32.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = hde32.h; sourceTree = "<group>"; };
 		419163CA268FEC5900E58711 /* hde32.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = hde32.c; sourceTree = "<group>"; };
+		6381FAFC27D0B9C100214F1D /* kern_test.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = kern_test.cpp; path = Lilu/Sources/kern_test.cpp; sourceTree = "<group>"; };
+		6381FB0027D0BAE000214F1D /* kern_test.hpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.h; path = kern_test.hpp; sourceTree = "<group>"; };
 		6F86FA732526419900D37571 /* kern_version.hpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.h; path = kern_version.hpp; sourceTree = "<group>"; };
 		CE10961E1F22876B00B623FC /* umm_malloc.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = umm_malloc.c; sourceTree = "<group>"; };
 		CE10961F1F22876B00B623FC /* umm_malloc.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = umm_malloc.h; sourceTree = "<group>"; };
@@ -362,6 +366,7 @@
 				CE2E7B8D1E2C6A73009AC62A /* kern_policy.hpp */,
 				CE77590E211D8B200063EAE6 /* kern_time.hpp */,
 				CE335AE32097442500C60A5F /* kern_rtc.hpp */,
+				6381FB0027D0BAE000214F1D /* kern_test.hpp */,
 				CE2E7B901E2C6A73009AC62A /* kern_user.hpp */,
 				CE2E7B921E2C6A73009AC62A /* kern_util.hpp */,
 				6F86FA732526419900D37571 /* kern_version.hpp */,
@@ -397,6 +402,7 @@
 				CE2687F4213BC02900E17BDD /* kern_ubsan.c */,
 				CE2E7BAD1E2C6BAA009AC62A /* kern_user.cpp */,
 				CE2E7BAE1E2C6BAA009AC62A /* kern_util.cpp */,
+				6381FAFC27D0B9C100214F1D /* kern_test.cpp */,
 			);
 			name = Sources;
 			sourceTree = "<group>";
@@ -526,6 +532,7 @@
 				1C3E7AF81C84B63000A6448A /* sparc.h in Headers */,
 				1C3E7AF91C84B63000A6448A /* ppc.h in Headers */,
 				1C3E7AFC1C84B63000A6448A /* capstone.h in Headers */,
+				6381FB0127D0BAE000214F1D /* kern_test.hpp in Headers */,
 				CEB6D9951F69D8CF005B6AC3 /* kern_nvram.hpp in Headers */,
 				CE77590F211D8B200063EAE6 /* kern_time.hpp in Headers */,
 				1C3E7AFD1C84B63000A6448A /* arm64.h in Headers */,
@@ -661,6 +668,7 @@
 				CEC0C5F2208F9A14000BFE88 /* kern_efi_trampoline_x86_64.s in Sources */,
 				CE3EEE10208F6738003E1C0C /* kern_cpu.cpp in Sources */,
 				CE2E7BB91E2C6BAA009AC62A /* kern_util.cpp in Sources */,
+				6381FB0227D0D71000214F1D /* kern_test.cpp in Sources */,
 				CE2E7BB31E2C6BAA009AC62A /* kern_mach.cpp in Sources */,
 				CE2E7BB11E2C6BAA009AC62A /* kern_file.cpp in Sources */,
 				CE1096261F22876B00B623FC /* umm_malloc.c in Sources */,
