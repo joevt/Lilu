@@ -221,7 +221,7 @@ LiluAPI::Error LiluAPI::onProcLoad(UserPatcher::ProcInfo *infos, size_t num, Use
 				return Error::MemoryError;
 			}
 			else {
-				DBGLOG("api", "stored ProcInfo[%d]: path:\"%s\"", i, infos[i].path);
+				DBGLOG("api", "stored ProcInfo[%d]: path:\"%s\"", (int)i, infos[i].path);
 			}
 		}
 	}
@@ -234,7 +234,7 @@ LiluAPI::Error LiluAPI::onProcLoad(UserPatcher::ProcInfo *infos, size_t num, Use
 			return Error::MemoryError;
 		}
 		else {
-			DBGLOG("api", "stored BinaryModInfo[%d]: path:\"%s\"", i, mods[i].path);
+			DBGLOG("api", "stored BinaryModInfo[%d]: path:\"%s\"", (int)i, mods[i].path);
 		}
 	}
 
@@ -274,7 +274,7 @@ void LiluAPI::finaliseRequests() {
 }
 
 void LiluAPI::processPatcherLoadCallbacks(KernelPatcher &patcher) {
-	DBGLOG("api", "[ LiluAPI::processPatcherLoadCallbacks %x", &patcher);
+	DBGLOG("api", "[ LiluAPI::processPatcherLoadCallbacks 0x%llX", (uint64_t)&patcher);
 	// Process the callbacks
 	for (size_t i = 0; i < patcherLoadedCallbacks.size(); i++) {
 		auto p = patcherLoadedCallbacks[i];
