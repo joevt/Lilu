@@ -1128,6 +1128,108 @@ vm_prot_t UserPatcher::getPageProtection(vm_map_t map, vm_map_address_t addr) {
 	return prot;
 }
 
+extern "C" {
+	lck_rw_type_t lck_rw_done(lck_rw_t *lck);
+}
+#define vm_map_lock(map) lck_rw_lock_exclusive((lck_rw_t *)map);
+#define vm_map_unlock(map) lck_rw_done((lck_rw_t *)map);
+#if defined(__i386__) // i386 and ppc
+	#define vm_map_to_entry(map) (vm_map_entry_t)&getMember<void*>(map, 12)
+	#define vme_next(entry) getMember<vm_map_entry_t>(entry, 4)
+	#define vme_start(entry) getMember<vm_map_offset_t>(entry, 8)
+	#define vme_end(entry) getMember<vm_map_offset_t>(entry, 16)
+#else
+	#define vm_map_to_entry(map) (vm_map_entry_t)&getMember<void*>(map, 16)
+	#define vme_next(entry) getMember<vm_map_entry_t>(entry, 8)
+	#define vme_start(entry) getMember<vm_map_offset_t>(entry, 16)
+	#define vme_end(entry) getMember<vm_map_offset_t>(entry, 24)
+#endif
+#define vme_max_protection(entry) (((getMember<int32_t>(entry, vme_flags_offset)) >> vme_flag_max_protection_shift) & ~(-1 << vme_flag_max_protection_size))
+#define set_vme_max_protection(entry, protection) ((getMember<int32_t>(entry, vme_flags_offset)) |= ((protection & ~(-1 << vme_flag_max_protection_size)) << vme_flag_max_protection_shift ))
+
+/* Change max protection */
+bool UserPatcher::vmSetMaxProtection(
+	vm_map_t map,
+	vm_map_offset_t start,
+	vm_size_t size,
+	vm_prot_t set_protection,
+	vm_prot_t clear_protection)
+{
+	vm_map_entry_t entry;
+	vm_map_entry_t tmp_entry;
+	vm_map_offset_t end = start + size;
+
+	// from examining disassembly of each kernel:
+	// 10.4.11 Tiger         = byte:0x25 shift:2 = int32:0x24 shift:10 // i386 (did not check ppc)
+	// 10.5.8  Leopard       = byte:0x25 shift:2 = int32:0x24 shift:10 // i386 (did not check ppc)
+	// 10.6.8  Snow Leopard  = byte:0x31 shift:2 = int32:0x30 shift:10 // i386 is 0x24
+	// 10.7.5  Lion          =                     int32:0x48 shift:10 // i386 is 0x30
+	// 10.8.5  Mountain Lion =                     int32:0x48 shift:10
+	// 10.9.5  Mavericks     =                     int32:0x48 shift:10
+	// 10.10.5 Yosemite      =                     int32:0x48 shift:10
+	// 10.11.6 El Capitan    =                     int32:0x48 shift:10
+	// 10.12.6 Sierra        =                     int32:0x48 shift:10
+	// 10.13.6 High Sierra   =                     int32:0x48 shift:10
+	// 10.14.6 Mojave        =                     int32:0x48 shift:10
+	// 10.15.7 Catalina      =                     int32:0x48 shift:10
+	// 11.6.4  Big Sur       =                     int32:0x48 shift:10
+	// 12.2.1  Monterey      =                     int32:0x48 shift:11
+	
+	int vme_flags_offset =
+#if defined(__i386__)
+		getKernelVersion() >= KernelVersion::Lion        ? 0x30 :
+#else
+		getKernelVersion() >= KernelVersion::Lion        ? 0x48 :
+		getKernelVersion() >= KernelVersion::SnowLeopard ? 0x30 :
+#endif
+		0x24;
+	
+	// DWARF debug symbols (dSYM) for i386/x86_64 between 10.5 and 10.12 incorrectly shows bit offset of 19 which is the result of counting bits from the MSB instead of the LSB
+	// meaning the LSB (bit 0) is bit offset 31 in DWARF and bit 10 is bit offset 19 in DWARF.
+	// 19 = 32(int32 total bits) - 10(bit# counted from LSB) - 3(field width in bits)
+	// DWARF debug symbols after 10.13 use the correct bit number (counting from LSB) which is 10 (11 for Monterey)
+	int vme_flag_max_protection_shift = getKernelVersion() >= KernelVersion::Monterey ? 11 : 10;
+	int vme_flag_max_protection_size  = getKernelVersion() >= KernelVersion::Monterey ? 4  : 3;
+
+	vm_map_lock(map);
+
+	if (!orgVmMapLookupEntry(map, start, &tmp_entry)) {
+		DBGLOG("user", "orgVmMapLookupEntry failed");
+		vm_map_unlock(map);
+		return FALSE;
+	}
+
+	entry = tmp_entry;
+
+	while (start < end) {
+		if (entry == vm_map_to_entry(map)) {
+			DBGLOG("user", "entry == vm_map");
+			vm_map_unlock(map);
+			return FALSE;
+		}
+
+		if (start < vme_start(entry)) {
+			// No holes allowed!
+			DBGLOG("user", "vm entry hole");
+			vm_map_unlock(map);
+			return FALSE;
+		}
+
+		int old_max_protection = vme_max_protection(entry);
+		int new_max_protection = (old_max_protection & ~clear_protection) | set_protection;
+		
+		if (new_max_protection != old_max_protection) {
+			DBGLOG("user", "changed max protection of 0x%llx from %d to %d", start, old_max_protection, new_max_protection);
+			set_vme_max_protection(entry, new_max_protection);
+		}
+
+		start = vme_end(entry);
+		entry = vme_next(entry);
+	}
+	vm_map_unlock(map);
+	return TRUE;
+}
+
 bool UserPatcher::hookMemoryAccess() {
 	DBGLOG("user", "[ UserPatcher::hookMemoryAccess");
 	// 10.12 and newer
@@ -1196,6 +1298,14 @@ bool UserPatcher::hookMemoryAccess() {
 		return false;
 	}
 
+	orgVmMapLookupEntry = reinterpret_cast<t_vmMapLookupEntry>(patcher->solveSymbol(KernelPatcher::KernelID, "_vm_map_lookup_entry"));
+	if (patcher->getError() != KernelPatcher::Error::NoError) {
+		SYSLOG("user", "failed to resolve _vm_map_lookup_entry");
+		patcher->clearError();
+		DBGLOG("user", "] UserPatcher::hookMemoryAccess false");
+		return false;
+	}
+	
 	// On 10.12.1 b4 Apple decided not to let current_map point to the current process
 	// For this reason we have to obtain the map with the other methods
 	if (getKernelVersion() >= KernelVersion::Sierra) {
