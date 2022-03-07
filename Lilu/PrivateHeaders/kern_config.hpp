@@ -172,9 +172,7 @@ public:
 	 *  Initialise kernel and user patchers from policy handler
 	 */
 	void policyInit(const char *name) {
-        DBGLOG("config", "[ policyInit %s", name);
-		(void)name;
-
+        DBGLOG("config", "[ Configuration::policyInit %s", name);
 		// Outer check is used here to avoid unnecessary locking after we initialise
 		if (!atomic_load_explicit(&initialised, memory_order_relaxed)) {
 			IOLockLock(policyLock);
@@ -184,7 +182,7 @@ public:
 			}
 			IOLockUnlock(policyLock);
 		}
-        DBGLOG("config", "] policyInit %s", name);
+        DBGLOG("config", "] Configuration::policyInit %s", name);
 	}
 	
 	/**

@@ -37,14 +37,19 @@ extern "C" int kauth_callback(kauth_cred_t credential, void *idata, kauth_action
 #endif
 
 IOService *PRODUCT_NAME::probe(IOService *provider, SInt32 *score) {
+	DBGLOG("init", "[ %s::probe", xStringify(PRODUCT_NAME));
 	setProperty("VersionInfo", kextVersion);
 	auto service = IOService::probe(provider, score);
-	return ADDPR(config).startSuccess ? service : nullptr;
+	IOService *result = ADDPR(config).startSuccess ? service : nullptr;
+	DBGLOG("init", "] %s::probe result:0x%llX", xStringify(PRODUCT_NAME), (uint64_t)result);
+	return result;
 }
 
 bool PRODUCT_NAME::start(IOService *provider) {
+	DBGLOG("init", "[ %s::start", xStringify(PRODUCT_NAME));
 	if (!IOService::start(provider)) {
 		SYSLOG("init", "failed to start the parent");
+		DBGLOG("init", "] %s::start result:%d", xStringify(PRODUCT_NAME), false);
 		return false;
 	}
 	
@@ -54,11 +59,13 @@ bool PRODUCT_NAME::start(IOService *provider) {
 		kauth_listener_vnode = kauth_listen_scope(KAUTH_SCOPE_VNODE, kauth_callback, NULL);
 		if (!kauth_listener_vnode) {
 			SYSLOG("init", "failed to register kauth listener");
+			DBGLOG("init", "] %s::start result:%d", xStringify(PRODUCT_NAME), false);
 			return false;
 		}
 	}
 #endif
 
+	DBGLOG("init", "] %s::start result:%d", xStringify(PRODUCT_NAME), ADDPR(config).startSuccess);
 	return ADDPR(config).startSuccess;
 }
 
@@ -98,7 +105,7 @@ int Configuration::initConsole(PE_Video *info, int op) {
 	if (op == kPEEnableScreen && !atomic_load_explicit(&ADDPR(config).initialised, memory_order_relaxed)) {
 		IOLockLock(ADDPR(config).policyLock);
 		if (!atomic_load_explicit(&ADDPR(config).initialised, memory_order_relaxed)) {
-			DBGLOG("config", "PE_initialize_console %d performing init", op);
+			DBGLOG("config", "[ Configuration::initConsole %d performing init", op);
 
 			// Complete plugin registration and mark ourselves as loaded ahead of time to avoid race conditions.
 			lilu.finaliseRequests();
@@ -111,6 +118,8 @@ int Configuration::initConsole(PE_Video *info, int op) {
 			}, nullptr);
 			if (thread)
 				thread_call_enter1(thread, thread);
+
+			DBGLOG("config", "] Configuration::initConsole");
 		}
 		IOLockUnlock(ADDPR(config).policyLock);
 	}
@@ -165,17 +174,19 @@ bool Configuration::performInit() {
 
 #if defined(__x86_64__)
 int Configuration::policyCheckRemount(kauth_cred_t, mount *, label *) {
+	DBGLOG("config", "Configuration::policyCheckRemount");
 	ADDPR(config).policyInit("mac_mount_check_remount");
 	return 0;
 }
 
 int Configuration::policyCredCheckLabelUpdateExecve(kauth_cred_t, vnode_t, ...) {
+	DBGLOG("config", "Configuration::policyCredCheckLabelUpdateExecve");
 	ADDPR(config).policyInit("mac_cred_check_label_update_execve");
 	return 0;
 }
 
 void Configuration::policyInitBSD(mac_policy_conf *conf) {
-	DBGLOG("config", "init bsd policy on %u in %d", getKernelVersion(), ADDPR(config).installOrRecovery);
+	DBGLOG("config", "Configuration::policyInitBSD kernelVersion:%u installOrRecovery:%d", getKernelVersion(), ADDPR(config).installOrRecovery);
 	if (getKernelVersion() >= KernelVersion::BigSur)
 		ADDPR(config).policyInit("init bsd");
 }
@@ -249,7 +260,11 @@ void Configuration::saveCustomDebugOnDisk(thread_call_param_t, thread_call_param
 #endif
 
 bool Configuration::getBootArguments() {
-	if (readArguments) return !isDisabled;
+	DBGLOG("config", "[ Configuration::getBootArguments disabled:%d", isDisabled);
+	if (readArguments) {
+		DBGLOG("config", "] Configuration::getBootArguments result:%d", !isDisabled);
+		return !isDisabled;
+	}
 
 	isDisabled = false;
 
@@ -284,6 +299,7 @@ bool Configuration::getBootArguments() {
 
 	ADDPR(debugEnabled) = debugForAll;
 	ADDPR(debugEnabled) |= checkKernelArgument(bootargDebug);
+	DBGLOG("config", "%s set to %d", xStringify(ADDPR(debugEnabled)), ADDPR(debugEnabled));
 
 	allowDecompress = !checkKernelArgument(bootargLowMem);
 
@@ -341,16 +357,18 @@ bool Configuration::getBootArguments() {
 #endif
 	}
 
+	DBGLOG("config", "] Configuration::getBootArguments result:%d", !isDisabled);
 	return !isDisabled;
 }
 
 bool Configuration::registerPolicy() {
-	DBGLOG("config", "initialising policy");
+	DBGLOG("config", "[ Configuration::registerPolicy");
 
 	policyLock = IOLockAlloc();
 
 	if (policyLock == nullptr) {
 		SYSLOG("config", "failed to alloc policy lock");
+		DBGLOG("config", "] Configuration::registerPolicy false");
 		return false;
 	}
 
@@ -358,6 +376,7 @@ bool Configuration::registerPolicy() {
 	if (getKernelVersion() >= KernelVersion::BigSur) {
 		if (performEarlyInit()) {
 			startSuccess = true;
+			DBGLOG("config", "] Configuration::registerPolicy true");
 			return true;
 		} else {
 			SYSLOG("config", "failed to perform early init");
@@ -368,15 +387,19 @@ bool Configuration::registerPolicy() {
 		SYSLOG("config", "failed to register the policy");
 		IOLockFree(policyLock);
 		policyLock = nullptr;
+		DBGLOG("config", "] Configuration::registerPolicy false");
 		return false;
 	}
 #endif
 
 	startSuccess = true;
+
+	DBGLOG("config", "] Configuration::registerPolicy true");
 	return true;
 }
 
 extern "C" kern_return_t ADDPR(kern_start)(kmod_info_t *, void *) {
+	DBGLOG("init", "[ %s", xStringify(ADDPR(kern_start)));
 	if (ADDPR(config).getBootArguments()) {
 		// Make EFI runtime services available now, since they are standalone.
 		EfiRuntimeServices::activate();
@@ -388,6 +411,7 @@ extern "C" kern_return_t ADDPR(kern_start)(kmod_info_t *, void *) {
 		ADDPR(config).registerPolicy();
 	}
 
+	DBGLOG("init", "] %s", xStringify(ADDPR(kern_start)));
 	return KERN_SUCCESS;
 }
 

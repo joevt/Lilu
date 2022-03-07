@@ -27,19 +27,25 @@ OSDefineMetaClassAndStructors(PRODUCT_NAME, IOService)
 PRODUCT_NAME *ADDPR(selfInstance) = nullptr;
 
 IOService *PRODUCT_NAME::probe(IOService *provider, SInt32 *score) {
+	DBGLOG("init", "[ %s::probe", xStringify(PRODUCT_NAME));
 	ADDPR(selfInstance) = this;
 	setProperty("VersionInfo", kextVersion);
 	auto service = IOService::probe(provider, score);
-	return ADDPR(startSuccess) ? service : nullptr;
+	IOService *result = ADDPR(startSuccess) ? service : nullptr;
+	DBGLOG("init", "] %s::probe result:%llx", xStringify(PRODUCT_NAME), (uint64_t)result);
+	return result;
 }
 
 bool PRODUCT_NAME::start(IOService *provider) {
+	DBGLOG("init", "[ %s::start", xStringify(PRODUCT_NAME));
 	ADDPR(selfInstance) = this;
 	if (!IOService::start(provider)) {
 		SYSLOG("init", "failed to start the parent");
+		DBGLOG("init", "] %s::start result:false", xStringify(PRODUCT_NAME));
 		return false;
 	}
 
+	DBGLOG("init", "] %s::start result:%d", xStringify(PRODUCT_NAME), ADDPR(startSuccess));
 	return ADDPR(startSuccess);
 }
 
@@ -55,7 +61,7 @@ void PRODUCT_NAME::stop(IOService *provider) {
 EXPORT extern "C" kern_return_t ADDPR(kern_start)(kmod_info_t *, void *) {
 	// This is an ugly hack necessary on some systems where buffering kills most of debug output.
 
-	SYSLOG("init", "[ kern_start");
+	DBGLOG("init", "[ %s", xStringify(ADDPR(kern_start)));
 
 	lilu_get_boot_args("liludelay", &ADDPR(debugPrintDelay), sizeof(ADDPR(debugPrintDelay)));
 
@@ -81,17 +87,20 @@ EXPORT extern "C" kern_return_t ADDPR(kern_start)(kmod_info_t *, void *) {
 	
 	for (size_t i = 0; i < ADDPR(config).debugArgNum; i++) {
 		if (checkKernelArgument(ADDPR(config).debugArg[i])) {
+			DBGLOG("config", "%s set to %d because checkKernelArgument", xStringify(ADDPR(debugEnabled)), ADDPR(debugEnabled));
 			ADDPR(debugEnabled) = true;
 			break;
 		}
 	}
 
-	if (checkKernelArgument("-liludbgall"))
+	if (checkKernelArgument("-liludbgall")) {
 		ADDPR(debugEnabled) = true;
+		DBGLOG("config", "%s set to %d because -liludbgall", xStringify(ADDPR(debugEnabled)), ADDPR(debugEnabled));
+	}
 
 	// Report success but actually do not start and let I/O Kit unload us.
 	// This works better and increases boot speed in some cases.
-	SYSLOG("init", "] kern_start KERN_SUCCESS");
+	DBGLOG("init", "] %s KERN_SUCCESS", xStringify(ADDPR(kern_start)));
 	return KERN_SUCCESS;
 }
 

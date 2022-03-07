@@ -18,6 +18,7 @@
 LiluAPI lilu;
 
 void LiluAPI::init() {
+	DBGLOG("api", "[ LiluAPI::init");
 	access = IOLockAlloc();
 
 	if (ADDPR(config).installOrRecovery)
@@ -26,13 +27,16 @@ void LiluAPI::init() {
 		currentRunMode |= RunningSafeMode;
 	else
 		currentRunMode |= RunningNormal;
+	DBGLOG("api", "] LiluAPI::init");
 }
 
 void LiluAPI::deinit() {
+	DBGLOG("api", "[ LiluAPI::deinit");
 	if (access) {
 		IOLockFree(access);
 		access = nullptr;
 	}
+	DBGLOG("api", "] LiluAPI::deinit");
 }
 
 LiluAPI::Error LiluAPI::requestAccess(size_t version, bool check) {

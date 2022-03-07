@@ -14,6 +14,7 @@
 #include <sys/fcntl.h>
 
 uint8_t *FileIO::readFileToBuffer(const char *path, size_t &size) {
+	DBGLOG("file", "[ FileIO::readFileToBuffer path:%s", path);
 	vnode_t vnode = NULLVP;
 	vfs_context_t ctxt = vfs_context_create(nullptr);
 	uint8_t *buf = nullptr;
@@ -30,6 +31,7 @@ uint8_t *FileIO::readFileToBuffer(const char *path, size_t &size) {
 					buf = nullptr;
 				} else {
 					// Guarantee null termination
+					DBGLOG("file", "read %s file of %lu size", path, size);
 					buf[size] = 0x00;
 				}
 			} else {
@@ -40,11 +42,12 @@ uint8_t *FileIO::readFileToBuffer(const char *path, size_t &size) {
 		}
 		vnode_put(vnode);
 	} else {
-		SYSLOG("file", "failed to find %s", path);
+		SYSLOG("file", "error:0x%X failed to find %s", err, path);
 	}
 
 	vfs_context_rele(ctxt);
 
+	DBGLOG("file", "] FileIO::readFileToBuffer result:0x%llX", (uint64_t)buf);
 	return buf;
 }
 

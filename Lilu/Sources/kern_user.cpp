@@ -157,6 +157,7 @@ bool UserPatcher::registerPatches(ProcInfo **procs, size_t procNum, BinaryModInf
 }
 
 void UserPatcher::deinit() {
+	DBGLOG("user", "[ UserPatcher::deinit");
 	// Silently return if disabled
 	if (ADDPR(config).isUserDisabled)
 		return;
@@ -170,6 +171,7 @@ void UserPatcher::deinit() {
 	lookupStorage.deinit();
 	for (size_t i = 0; i < Lookup::matchNum; i++)
 		lookup.c[i].deinit();
+	DBGLOG("user", "] UserPatcher::deinit");
 }
 
 void UserPatcher::performPagePatch(const void *data_ptr, size_t data_size) {
@@ -335,6 +337,7 @@ void UserPatcher::onPath(const char *path, uint32_t len) {
 }
 
 void UserPatcher::patchBinary(vm_map_t map, const char *path, uint32_t len) {
+	DBGLOG("user", "[ UserPatcher::patchBinary path:%s", path);
 	if (patchDyldSharedCache && sharedCacheSlideStored) {
 		patchSharedCache(map, storedSharedCacheSlide, CPU_TYPE_X86_64);
 	} else {
@@ -342,6 +345,7 @@ void UserPatcher::patchBinary(vm_map_t map, const char *path, uint32_t len) {
 		injectRestrict(map);
 	}
 	userCallback.first(userCallback.second, *this, map, path, len);
+	DBGLOG("user", "] UserPatcher::patchBinary path:%s", path);
 }
 
 bool UserPatcher::getTaskHeader(vm_map_t taskPort, mach_header_64 &header) {
@@ -396,6 +400,7 @@ bool UserPatcher::injectRestrict(vm_map_t taskPort) {
 			// Enable writing for the calculated regions
 			for (size_t i = 0; i < 3; i++) {
 				if (prots[i].off && !(prots[i].val & VM_PROT_WRITE)) {
+					DBGLOG("user", "changing memory protection #%lu to %d", i, prots[i].val|VM_PROT_WRITE);
 					auto res = vmProtect(taskPort, (vm_offset_t)prots[i].off, PAGE_SIZE, FALSE, prots[i].val|VM_PROT_WRITE);
 					if (res != KERN_SUCCESS) {
 						SYSLOG("user", "failed to change memory protection (%lu, %d)", i, res);
@@ -412,6 +417,7 @@ bool UserPatcher::injectRestrict(vm_map_t taskPort) {
 			uint64_t newCombVal = (static_cast<uint64_t>(tmpHeader.sizeofcmds + restrSize) << 32) | (tmpHeader.ncmds + 1);
 
 			// Write new number and size of commands
+			DBGLOG("user", "write new number and size of commands");
 			auto res = orgVmMapWriteUser(taskPort, &newCombVal, ncmdsAddr, sizeof(uint64_t));
 			if (res != KERN_SUCCESS) {
 				SYSLOG("user", "failed to change mach header (%d)", res);
@@ -419,6 +425,7 @@ bool UserPatcher::injectRestrict(vm_map_t taskPort) {
 				return true;
 			}
 
+			DBGLOG("user", "write the load command");
 			// Write the load command
 			auto restrSegment = tmpHeader.magic == MH_MAGIC ? static_cast<void *>(&restrictSegment32) : static_cast<void *>(&restrictSegment64);
 			res = orgVmMapWriteUser(taskPort, restrSegment, newCmdAddr, restrSize);
@@ -432,6 +439,7 @@ bool UserPatcher::injectRestrict(vm_map_t taskPort) {
 				return true;
 			}
 
+			DBGLOG("user", "restore protection flags");
 			// Restore protection flags
 			for (size_t i = 0; i < 3; i++) {
 				if (prots[i].off && !(prots[i].val & VM_PROT_WRITE)) {
@@ -606,29 +614,32 @@ bool UserPatcher::injectPayload(vm_map_t taskPort, uint8_t *payload, size_t size
 }
 
 kern_return_t UserPatcher::vmSharedRegionMapFile(vm_shared_region_t shared_region, unsigned int mappings_count, shared_file_mapping_np *mappings, memory_object_control_t file_control, memory_object_size_t file_size, void *root_dir, uint32_t slide, user_addr_t slide_start, user_addr_t slide_size) {
+	DBGLOG("user", "[ UserPatcher::vmSharedRegionSlide slide:%d", slide);
 	auto res = FunctionCast(vmSharedRegionMapFile, that->orgVmSharedRegionMapFile)(shared_region, mappings_count, mappings, file_control, file_size, root_dir, slide, slide_start, slide_size);
 	if (!slide) {
 		that->patchSharedCache(that->orgCurrentMap(), 0, CPU_TYPE_X86_64);
 	}
+	DBGLOG("user", "] UserPatcher::vmSharedRegionMapFile result:%d", res);
 	return res;
 }
 
 int UserPatcher::vmSharedRegionSlide(uint32_t slide, mach_vm_offset_t entry_start_address, mach_vm_size_t entry_size, mach_vm_offset_t slide_start, mach_vm_size_t slide_size, memory_object_control_t sr_file_control) {
-
-	DBGLOG("user", "params are %X %llX %llX %llX %llX", slide, entry_start_address, entry_size, slide_start, slide_size);
-
+	DBGLOG("user", "[ UserPatcher::vmSharedRegionSlide slide:%X start:%llX size:%llX slide_start:%llX slide_size%llX", slide, entry_start_address, entry_size, slide_start, slide_size);
 	that->patchSharedCache(that->orgCurrentMap(), slide, CPU_TYPE_X86_64);
-
-	return FunctionCast(vmSharedRegionSlide, that->orgVmSharedRegionSlide)(slide, entry_start_address, entry_size, slide_start, slide_size, sr_file_control);
+	int result = FunctionCast(vmSharedRegionSlide, that->orgVmSharedRegionSlide)(slide, entry_start_address, entry_size, slide_start, slide_size, sr_file_control);
+	DBGLOG("user", "] UserPatcher::vmSharedRegionSlide result:%d", result);
+	return result;
 }
 
 int UserPatcher::vmSharedRegionSlideMojave(uint32_t slide, mach_vm_offset_t entry_start_address, mach_vm_size_t entry_size, mach_vm_offset_t slide_start, mach_vm_size_t slide_size, mach_vm_offset_t slid_mapping, memory_object_control_t sr_file_control) {
 
-	DBGLOG("user", "params are %X %llX %llX %llX %llX", slide, entry_start_address, entry_size, slide_start, slide_size);
+	DBGLOG("user", "[ UserPatcher::vmSharedRegionSlideMojave slide:%X start:%llX size:%llX slide_start:%llX slide_size%llX", slide, entry_start_address, entry_size, slide_start, slide_size);
 
 	that->patchSharedCache(that->orgCurrentMap(), slide, CPU_TYPE_X86_64);
 
-	return FunctionCast(vmSharedRegionSlideMojave, that->orgVmSharedRegionSlideMojave)(slide, entry_start_address, entry_size, slide_start, slide_size, slid_mapping, sr_file_control);
+	int result = FunctionCast(vmSharedRegionSlideMojave, that->orgVmSharedRegionSlideMojave)(slide, entry_start_address, entry_size, slide_start, slide_size, slid_mapping, sr_file_control);
+	DBGLOG("user", "] UserPatcher::vmSharedRegionSlideMojave result:%d", result);
+	return result;
 }
 
 void UserPatcher::taskSetMainThreadQos(task_t task, thread_t main_thread) {
@@ -649,14 +660,19 @@ void UserPatcher::patchSharedCache(vm_map_t taskPort, uint32_t slide, cpu_type_t
 	DBGLOG("user", "[ UserPatcher::patchSharedCache applyChanges:%d", applyChanges);
 	// Save the slide for restoration
 	if (applyChanges && !sharedCacheSlideStored) {
+		DBGLOG("user", "setting slide to 0x%x", slide);
 		storedSharedCacheSlide = slide;
 		sharedCacheSlideStored = true;
 	}
 
+	DBGLOG("user", "[ lookupStorage loop %lld", (uint64_t)lookupStorage.size());
 	for (size_t i = 0, sz = lookupStorage.size(); i < sz; i++) {
+		DBGLOG("user", "[ lookupStorage[%lld]", (uint64_t)i);
 		auto &storageEntry = lookupStorage[i];
 		auto &mod = storageEntry->mod;
+		DBGLOG("user", "[ storageEntry loop %lld", (uint64_t)storageEntry->refs.size());
 		for (size_t j = 0, rsz = storageEntry->refs.size(); j < rsz; j++) {
+			DBGLOG("user", "[ storageEntry->refs[%lld]", (uint64_t)j);
 			auto &ref = storageEntry->refs[j];
 			auto &patch = storageEntry->mod->patches[ref->i];
 			size_t offNum = ref->segOffs.size();
@@ -671,6 +687,8 @@ void UserPatcher::patchSharedCache(vm_map_t taskPort, uint32_t slide, cpu_type_t
 			} else if (patch.segment >= FileSegment::SegmentsDataStart && patch.segment <= FileSegment::SegmentsDataEnd) {
 				modStart = mod->startDATA;
 				modEnd = mod->endDATA;
+			} else {
+				DBGLOG("user", "no modStart and modEnd");
 			}
 
 			if (modStart && modEnd && offNum && patch.cpu == cpu) {
@@ -717,8 +735,12 @@ void UserPatcher::patchSharedCache(vm_map_t taskPort, uint32_t slide, cpu_type_t
 					Buffer::deleter(tmp);
 				}
 			}
-		}
-	}
+			DBGLOG("user", "] storageEntry->refs[%lld]", (uint64_t)j);
+		} // for storageEntry->refs
+		DBGLOG("user", "] storageEntry loop %lld", (uint64_t)storageEntry->refs.size());
+		DBGLOG("user", "] lookupStorage[%lld]", (uint64_t)i);
+	} // for lookupStorage
+	DBGLOG("user", "] lookupStorage loop %lld", (uint64_t)lookupStorage.size());
 	DBGLOG("user", "] UserPatcher::patchSharedCache");
 }
 
@@ -864,7 +886,7 @@ bool UserPatcher::loadDyldSharedCacheMapping() {
 }
 
 bool UserPatcher::loadFilesForPatching() {
-	DBGLOG("user", "[ UserPatcher::loadFilesForPatching %lu", binaryModSize);
+	DBGLOG("user", "[ UserPatcher::loadFilesForPatching binaryModSize:%lu", binaryModSize);
 
 	for (size_t i = 0; i < binaryModSize; i++) {
 		bool hasPatches = false;
