@@ -20,6 +20,7 @@ extern "C" {
 extern BaseDeviceInfo globalBaseDeviceInfo;
 
 void CPUInfo::init() {
+	DBGLOG("cpu", "[ CPUInfo::init");
 	auto &bdi = globalBaseDeviceInfo;
 
 	// Start with detecting CPU vendor
@@ -35,8 +36,10 @@ void CPUInfo::init() {
 	bdi.cpuHasAvx2 = getCpuid(7, 0, nullptr, &b) && (b & CPUInfo::bit_AVX2) != 0;
 
 	// Only do extended model checking on Intel or when unsupported.
-	if (bdi.cpuVendor != CpuVendor::Intel || bdi.cpuMaxLevel < 1)
+	if (bdi.cpuVendor != CpuVendor::Intel || bdi.cpuMaxLevel < 1) {
+		DBGLOG("cpu", "] CPUInfo::init (not Intel or supported)");
 		return;
+	}
 
 	// Detect CPU family and model
 	union {
@@ -59,6 +62,7 @@ void CPUInfo::init() {
 		DBGLOG("cpu", "found CPU generation override %u", generation);
 		if (generation < static_cast<uint32_t>(CPUInfo::CpuGeneration::MaxGeneration)) {
 			bdi.cpuGeneration = static_cast<CPUInfo::CpuGeneration>(generation);
+			DBGLOG("cpu", "] CPUInfo::init (found override)");
 			return;
 		} else {
 			SYSLOG("cpu", "found invalid CPU generation override %u, falling back...", generation);
@@ -144,6 +148,7 @@ void CPUInfo::init() {
 				break;
 		}
 	}
+	DBGLOG("cpu", "] CPUInfo::init");
 }
 
 CPUInfo::CpuGeneration CPUInfo::getGeneration(uint32_t *ofamily, uint32_t *omodel, uint32_t *ostepping) {

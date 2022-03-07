@@ -398,6 +398,7 @@ void DeviceInfo::deleter(DeviceInfo *d) {
 }
 
 void DeviceInfo::processSwitchOff() {
+	DBGLOG("dev", "[ BaseDeviceInfo::processSwitchOff");
 	DBGLOG("dev", "processing %lu external GPUs to disable - %s", videoExternal.size(), requestedExternalSwitchOff ? "all" : "selective");
 
 	size_t i = 0;
@@ -467,7 +468,10 @@ void DeviceInfo::processSwitchOff() {
 		{
 			internalSwitchOff = true;
 		}
-		if (!internalSwitchOff) return;
+		if (!internalSwitchOff) {
+			DBGLOG("dev", "] BaseDeviceInfo::processSwitchOff");
+			return;
+		}
 		WIOKit::awaitPublishing(videoBuiltin);
 		auto gpu = OSDynamicCast(IOService, videoBuiltin);
 		auto pci = OSDynamicCast(IOService, videoBuiltin->getParentEntry(gIOServicePlane));
@@ -482,9 +486,11 @@ void DeviceInfo::processSwitchOff() {
 			SYSLOG("dev", "incompatible internal gpu discovered");
 		}
 	}
+	DBGLOG("dev", "] BaseDeviceInfo::processSwitchOff");
 }
 
 void BaseDeviceInfo::updateFirmwareVendor() {
+	DBGLOG("dev", "[ BaseDeviceInfo::updateFirmwareVendor");
 	auto entry = IORegistryEntry::fromPath("/efi", gIODTPlane);
 	if (entry) {
 		auto ven = OSDynamicCast(OSData, entry->getProperty("firmware-vendor"));
@@ -538,9 +544,11 @@ void BaseDeviceInfo::updateFirmwareVendor() {
 	} else {
 		SYSLOG("dev", "failed to obtain efi tree");
 	}
+	DBGLOG("dev", "] BaseDeviceInfo::updateFirmwareVendor");
 }
 
 void BaseDeviceInfo::updateModelInfo() {
+	DBGLOG("dev", "[ BaseDeviceInfo::updateModelInfo");
 	auto entry = IORegistryEntry::fromPath("/efi/platform", gIODTPlane);
 	if (entry) {
 		if (entry->getProperty("BEMB")) {
@@ -635,6 +643,7 @@ void BaseDeviceInfo::updateModelInfo() {
 		modelType = WIOKit::ComputerModel::ComputerLaptop;
 	else
 		modelType = WIOKit::ComputerModel::ComputerDesktop;
+	DBGLOG("dev", "] BaseDeviceInfo::updateModelInfo");
 }
 
 const BaseDeviceInfo &BaseDeviceInfo::get() {
@@ -642,10 +651,12 @@ const BaseDeviceInfo &BaseDeviceInfo::get() {
 }
 
 void BaseDeviceInfo::init() {
+	DBGLOG("dev", "[ BaseDeviceInfo::init");
 	// Initialize the CPU part.
 	CPUInfo::init();
 
 	globalBaseDeviceInfo.updateFirmwareVendor();
 	globalBaseDeviceInfo.updateModelInfo();
+	DBGLOG("dev", "] BaseDeviceInfo::init");
 }
 
