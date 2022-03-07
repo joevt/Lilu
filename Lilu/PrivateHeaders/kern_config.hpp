@@ -87,6 +87,12 @@ private:
 	bool performCommonInit();
 
 	/**
+	 *  Initialise second stage user patcher
+	 *
+	 */
+	void processUserLoadCallbacks();
+		
+	/**
 	 *  TrustedBSD policy called at exec
 	 *
 	 *  @param old Existing subject credential
@@ -122,6 +128,11 @@ private:
 	 */
 	static int initConsole(PE_Video *info, int op);
 
+	/**
+	 *  serial_keyboard_init wrapper used for signaling Lilu when rootvnode is available for reading files.
+	 */
+	static void serialKeyboardInit(void);
+
 #if defined(__x86_64__)
 	/**
 	 *  TrustedBSD policy options
@@ -140,6 +151,11 @@ private:
 	 *  Original function pointer for PE_initialize_console.
 	 */
 	mach_vm_address_t orgInitConsole {0};
+
+	/**
+	 *  Original function pointer for serial_keyboard_init.
+	 */
+	mach_vm_address_t orgSerialKeyboardInit {0};
 
 #ifdef DEBUG
 	/**
