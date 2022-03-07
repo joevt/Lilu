@@ -745,7 +745,7 @@ void UserPatcher::patchSharedCache(vm_map_t taskPort, uint32_t slide, cpu_type_t
 }
 
 size_t UserPatcher::mapAddresses(const char *mapBuf, MapEntry *mapEntries, size_t nentries) {
-	DBGLOG("user", "[ UserPatcher::mapAddresses nentries:%d", nentries);
+	DBGLOG("user", "[ UserPatcher::mapAddresses nentries:%d", (int)nentries);
 	if (nentries == 0 || !mapBuf) {
 		DBGLOG("user", "] UserPatcher::mapAddresses (no entries)");
 		return 0;
@@ -812,7 +812,7 @@ size_t UserPatcher::mapAddresses(const char *mapBuf, MapEntry *mapEntries, size_
 		}
 	}
 
-	DBGLOG("user", "] UserPatcher::mapAddresses found:%d", nfound);
+	DBGLOG("user", "] UserPatcher::mapAddresses found:%d", (int)nfound);
 	return nfound;
 }
 
@@ -857,7 +857,7 @@ bool UserPatcher::loadDyldSharedCacheMapping() {
 				DBGLOG("user", "mapped %lu entries out of %lu", nEntries, binaryModSize);
 
 				for (size_t i = 0; i < binaryModSize; i++) {
-					DBGLOG("user", "entry:%d TEXT:%llX..%llX DATA:%llX..%llX", nEntries, entries[i].startTEXT, entries[i].endTEXT, entries[i].startDATA, entries[i].endDATA);
+					DBGLOG("user", "entry:%d TEXT:%llX..%llX DATA:%llX..%llX", (int)nEntries, (uint64_t)entries[i].startTEXT, (uint64_t)entries[i].endTEXT, (uint64_t)entries[i].startDATA, (uint64_t)entries[i].endDATA);
 					binaryMod[i]->startTEXT = entries[i].startTEXT;
 					binaryMod[i]->endTEXT = entries[i].endTEXT;
 					binaryMod[i]->startDATA = entries[i].startDATA;
