@@ -340,8 +340,17 @@ void UserPatcher::patchBinary(vm_map_t map, const char *path, uint32_t len) {
 	DBGLOG("user", "[ UserPatcher::patchBinary path:%s", path);
 	if (patchDyldSharedCache && sharedCacheSlideStored) {
 		patchSharedCache(map, storedSharedCacheSlide, CPU_TYPE_X86_64);
-	} else {
-		if (patchDyldSharedCache) SYSLOG("user", "no slide present, initialisation failed, fallback to restrict");
+	}
+	if (!patchDyldSharedCache || !sharedCacheSlideStored || !lookupStorage.size()) {
+		// patchSharedCache doesn't do anything if lookupStorage is empty so use fallback in that case
+		if (patchDyldSharedCache) {
+			SYSLOG("user", "%s%sfallback to restrict",
+				sharedCacheSlideStored ? "" : "no slide present, ",
+				lookupStorage.size() ? "" : "no lookupStorage, ");
+		}
+		else {
+			SYSLOG("user", "fallback to restrict");
+		}
 		injectRestrict(map);
 	}
 	userCallback.first(userCallback.second, *this, map, path, len);
