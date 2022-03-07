@@ -253,6 +253,7 @@ private:
 	/**
 	 *  Kernel function prototypes
 	 */
+	using vm_map_entry_t = void *;
 	using vm_shared_region_t = void *;
 	using shared_file_mapping_np = void *;
 	using t_currentMap = vm_map_t (*)(void);
@@ -262,6 +263,7 @@ private:
 	using t_vmMapCheckProtection = boolean_t (*)(vm_map_t, vm_map_offset_t, vm_map_offset_t, vm_prot_t);
 	using t_vmMapReadUser = kern_return_t (*)(vm_map_t, vm_map_address_t, const void *, vm_size_t);
 	using t_vmMapWriteUser = kern_return_t (*)(vm_map_t, const void *, vm_map_address_t, vm_size_t);
+	using t_vmMapLookupEntry = boolean_t (*)(vm_map_t map, vm_map_address_t address, vm_map_entry_t *entry);
 
 	/**
 	 *  Original kernel function trampolines
@@ -279,6 +281,7 @@ private:
 	t_vmMapReadUser orgVmMapReadUser {nullptr};
 	t_vmMapWriteUser orgVmMapWriteUser {nullptr};
 	mach_vm_address_t orgTaskSetMainThreadQos {};
+	t_vmMapLookupEntry orgVmMapLookupEntry {nullptr};
 
 	/**
 	 *  Kernel function wrappers
@@ -524,6 +527,11 @@ private:
 	 *  See vm_protect description.
 	 */
 	kern_return_t vmProtect(vm_map_t map, vm_offset_t start, vm_size_t size, boolean_t set_maximum, vm_prot_t new_protection);
+
+	/**
+	 *  For vm_protect, to set max protection. See vm_map_check_protection. The set_maximum option of vm_protect cannot increase permissions. This function is used to get around that.
+	 */
+	bool vmSetMaxProtection(vm_map_t map, vm_map_offset_t start, vm_size_t size, vm_prot_t set_protection, vm_prot_t clear_protection = 0);
 
 	/**
 	 *  Callback invoked at process loading
