@@ -22,70 +22,314 @@
 
 static UserPatcher *that {nullptr};
 
-struct procref {
-	LIST_ENTRY(proc) p_list; /* List of all processes. */
-	task_t task;             /* corresponding task (static)*/
-};
+/*
+
+[????] (struct) proc {
+// (i386)
+// 10.5.9, 10.6.8
+    0x00,[   8] (struct) (anonymous struct) p_list { le_next, le_prev }
+    0x08,[   4] (pid_t) p_pid
+    0x0c,[   4] (void *) task
+
+// (x86_64)
+// 10.6.8, 10.7.5, 10.8, 10.9, 10.10.5, 10.11.6, 10.12.6, 10.13.6
+    0x00,[  16] (struct) (anonymous struct) p_list { le_next, le_prev }
+    0x10,[   4] (pid_t) p_pid
+    0x18,[   8] (void *) task
+
+// 10.14.6, 10.15.7, 11.6.4
+    0x00,[  16] (struct) (anonymous struct) p_list { le_next, le_prev }
+    0x10,[   8] (void *) task
+
+// 12.2.1
+    0x00,[  16] (struct) (anonymous struct) p_list { le_next, le_prev }
+    0x10,[   8] (void *) task
+    0x18,[   8] (proc *) p_pptr
+    0x20,[   8] (proc_ro_t) p_proc_ro
+
+    ...
+}
+
+// 12.2.1
+[ 120] (struct) proc_ro {
++   0x0,[   8] (proc *) pr_proc
++   0x8,[   8] (task *) pr_task
+*   0x10,[  48] (union) (anonymous union)  {
+    *   0x10,[  48] (struct) (anonymous struct) { same as proc_data }
+    *   0x10,[  48] (struct) proc_ro_data proc_data {
+        +   0x10,[   8] (uint64_t) p_uniqueid
+        +   0x18,[   4] (int) p_idversion
+        +   0x1c,[   4] (uint32_t) p_csflags
+        +   0x20,[   8] (ucred *) p_ucred
+        +   0x28,[   8] (uint8_t *) syscall_filter_mask
+        *   0x30,[  12] (struct) proc_platform_ro_data p_platform_data {
+            +   0x30,[   4] (uint32_t) p_platform
+            +   0x34,[   4] (uint32_t) p_min_sdk
+            +   0x38,[   4] (uint32_t) p_sdk
+            }
+        }
+    }
+*   0x40,[  56] (union) (anonymous union)  {
+    *   0x40,[  56] (struct) (anonymous struct) { same as task_data }
+    *   0x40,[  56] (struct) task_ro_data task_data {
+        *   0x40,[  40] (struct) task_token_ro_data task_tokens {
+            *   0x40,[   8] (struct) security_token_t sec_token {
+                +   0x40,[   8] (unsigned int[2]) val
+            }
+            *   0x48,[  32] (struct) audit_token_t audit_token {
+                +   0x48,[  32] (unsigned int[8]) val
+            }
+        }
+        *   0x68,[  16] (struct) task_filter_ro_data task_filters {
+            +   0x68,[   8] (uint8_t *) mach_trap_filter_mask
+            +   0x70,[   8] (uint8_t *) mach_kobj_filter_mask
+            }
+        }
+    }
+}
+
+*/
+
+static void dump_csFlags(UInt32 flags) {
+	DBGLOG("user", "p_csflags 0x%X %s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s", flags,
+		(flags & CS_VALID                 ) ?                   "VALID," : "",
+		(flags & CS_ADHOC                 ) ?                   "ADHOC," : "",
+		(flags & CS_GET_TASK_ALLOW        ) ?          "GET_TASK_ALLOW," : "",
+		(flags & CS_INSTALLER             ) ?               "INSTALLER," : "",
+		(flags & CS_FORCED_LV             ) ?               "FORCED_LV," : "",
+		(flags & CS_INVALID_ALLOWED       ) ?         "INVALID_ALLOWED," : "",
+		(flags & CS_HARD                  ) ?                    "HARD," : "",
+		(flags & CS_KILL                  ) ?                    "KILL," : "",
+		(flags & CS_CHECK_EXPIRATION      ) ?        "CHECK_EXPIRATION," : "",
+		(flags & CS_RESTRICT              ) ?                "RESTRICT," : "",
+		(flags & CS_ENFORCEMENT           ) ?             "ENFORCEMENT," : "",
+		(flags & CS_REQUIRE_LV            ) ?              "REQUIRE_LV," : "",
+		(flags & CS_ENTITLEMENTS_VALIDATED) ?  "ENTITLEMENTS_VALIDATED," : "",
+		(flags & CS_NVRAM_UNRESTRICTED    ) ?      "NVRAM_UNRESTRICTED," : "",
+		(flags & CS_RUNTIME               ) ?                 "RUNTIME," : "",
+		(flags & CS_LINKER_SIGNED         ) ?           "LINKER_SIGNED," : "",
+		(flags & CS_EXEC_SET_HARD         ) ?           "EXEC_SET_HARD," : "",
+		(flags & CS_EXEC_SET_KILL         ) ?           "EXEC_SET_KILL," : "",
+		(flags & CS_EXEC_SET_ENFORCEMENT  ) ?    "EXEC_SET_ENFORCEMENT," : "",
+		(flags & CS_EXEC_INHERIT_SIP      ) ?        "EXEC_INHERIT_SIP," : "",
+		(flags & CS_KILLED                ) ?                  "KILLED," : "",
+		(flags & CS_NO_UNTRUSTED_HELPERS  ) ?    "NO_UNTRUSTED_HELPERS," : "",
+		(flags & CS_PLATFORM_BINARY       ) ?         "PLATFORM_BINARY," : "",
+		(flags & CS_PLATFORM_PATH         ) ?           "PLATFORM_PATH," : "",
+		(flags & CS_DEBUGGED              ) ?                "DEBUGGED," : "",
+		(flags & CS_SIGNED                ) ?                  "SIGNED," : "",
+		(flags & CS_DEV_CODE              ) ?                "DEV_CODE," : "",
+		(flags & CS_DATAVAULT_CONTROLLER  ) ?    "DATAVAULT_CONTROLLER," : "",
+		(flags & 0x000c00c0               ) ?                        "?" : ""
+	);
+}
 
 kern_return_t UserPatcher::vmProtect(vm_map_t map, vm_offset_t start, vm_size_t size, boolean_t set_maximum, vm_prot_t new_protection) {
 	// On 10.14 XNU attempted to fix broken W^X and introduced several changes:
 	// 1. vm_protect (vm_map_protect) got a call to cs_process_enforcement (formerly cs_enforcement), which aborts
 	//    with a KERN_PROTECTION_FAILURE abort on failure. So far global codesign enforcement is not enabled,
 	//    and it is enough to remove CS_ENFORCEMENT from each process specifically. A thing to consider in future
-	//    macOS versions. Watch out for sysctl vm.cs_process_enforcemen.
+	//    macOS versions. Watch out for sysctl vm.cs_process_enforcement.
 	// 2. More processes get CS_KILL in addition to CS_ENFORCEMENT, which does not let us easily lift CS_ENFORCEMENT
 	//    during the vm_protect call, we also should remove CS_KILL from the process we patch. This slightly lowers
 	//    the security, but only for the patched process, and in no worse way than 10.13 by default. Watch out for
 	//    vm.cs_force_kill in the future.
-	auto currproc = reinterpret_cast<procref *>(current_proc());
+	auto currproc = reinterpret_cast<void *>(current_proc());
 	if ((new_protection & (VM_PROT_EXECUTE|VM_PROT_WRITE)) == (VM_PROT_EXECUTE|VM_PROT_WRITE) &&
 		getKernelVersion() >= KernelVersion::Mojave && currproc != nullptr) {
-		DBGLOG("user", "found request for W^X switch-off %d", new_protection);
+		DBGLOG("user", "found request for W^X switch-off set_max:%d new_prot:%d", set_maximum, new_protection);
 
+		// https://github.com/apple-oss-distributions/xnu/blob/main/bsd/sys/proc_internal.h
 		// struct proc layout usually changes with time, so we will calculate the offset based on partial layout:
-		// struct        pgrp *p_pgrp   Pointer to process group. (LL)
 		// uint32_t      p_csflags      flags for codesign (PL)
 		// uint32_t      p_pcaction     action  for process control on starvation
 		// uint8_t       p_uuid[16]     from LC_UUID load command
 		// cpu_type_t    p_cputype
 		// cpu_subtype_t p_cpusubtype
+
+		uint32_t *flags = NULL;
+
 		if (csFlagsOffset == 0) {
-			for (size_t off = 0x200; off < 0x400; off += sizeof (uint32_t)) {
-				auto csOff = off - sizeof(uint8_t[16]) - sizeof(uint32_t)*2;
-				auto cpu = getMember<uint32_t>(currproc, off);
-				auto subcpu = getMember<uint32_t>(currproc, off + sizeof (uint32_t)) & ~CPU_SUBTYPE_MASK;
-				if ((cpu == CPU_TYPE_X86_64 || cpu == CPU_TYPE_I386) &&
-					(subcpu == CPU_SUBTYPE_X86_64_ALL || subcpu == CPU_SUBTYPE_X86_64_H) &&
-					!(getMember<uint32_t>(currproc, csOff) & CS_KILLED)) {
-					csFlagsOffset = csOff;
-					break;
+			switch (getKernelVersion()) {
+				// These offsets can be found in the kernel dSYM files of each KDK (use dwarfdump)
+				case KernelVersion::Tiger        :                      ; break; // 10.4 doesn't have code signing
+				case KernelVersion::Leopard      : csFlagsOffset = 0x1dc; break; // ppc: 0x1c0
+#if defined(__i386__)
+				case KernelVersion::SnowLeopard  : csFlagsOffset = 0x1e0; break;
+				case KernelVersion::Lion         : csFlagsOffset = 0x1f4; break;
+#else
+				case KernelVersion::SnowLeopard  : csFlagsOffset = 0x2fc; break;
+				case KernelVersion::Lion         : csFlagsOffset = 0x308; break;
+#endif
+				case KernelVersion::MountainLion : csFlagsOffset = 0x308; break;
+				case KernelVersion::Mavericks    : csFlagsOffset = 0x310; break;
+				case KernelVersion::Yosemite     : csFlagsOffset = 0x310; break;
+				case KernelVersion::ElCapitan    : csFlagsOffset = 0x320; break;
+				case KernelVersion::Sierra       : csFlagsOffset = 0x320; break;
+				case KernelVersion::HighSierra   : csFlagsOffset = 0x320; break;
+				case KernelVersion::Mojave       : csFlagsOffset = 0x308; break;
+				case KernelVersion::Catalina     : csFlagsOffset = 0x328; break;
+				case KernelVersion::BigSur       : csFlagsOffset = 0x310; break;
+				case KernelVersion::Monterey     :                      ; break;
+			}
+			if (getKernelVersion() >= KernelVersion::Yosemite && getKernelVersion() <= KernelVersion::BigSur) {
+				// These versions have a p_cputype and p_cpusubtype at fixed offset from p_csflags
+				size_t off;
+				for (off = 0x300; off < 0x400; off += sizeof (uint32_t)) {
+					auto csOff = (off > 0x300) ? off : csFlagsOffset; // test the default first
+					auto csflags = getMember<uint32_t>(currproc, csOff);
+					auto cpu     = getMember<uint32_t>(currproc, csOff + sizeof(uint32_t)*2 + sizeof(uint8_t[16]));
+					auto subcpu  = getMember<uint32_t>(currproc, csOff + sizeof(uint32_t)*3 + sizeof(uint8_t[16])) & ~CPU_SUBTYPE_MASK;
+					if ((cpu == CPU_TYPE_X86_64 || cpu == CPU_TYPE_I386) &&
+						(subcpu == CPU_SUBTYPE_X86_64_ALL || subcpu == CPU_SUBTYPE_X86_64_H) &&
+						!(csflags & CS_KILLED)
+					) {
+						if (csFlagsOffset == csOff) {
+							DBGLOG("user", "found p_csflags at default offset %X", (uint32_t)csFlagsOffset);
+						}
+						else {
+							DBGLOG("user", "found p_csflags at offset %X which is not the default offset %X", (uint32_t)csOff, (uint32_t)csFlagsOffset);
+							csFlagsOffset = csOff;
+						}
+						break;
+					}
+					else if (off == 0x300) {
+						SYSLOG("user", "default p_csflags has unexpected value (%X), cpu type (%X), or cpu sub type (%X)", csflags, cpu, subcpu);
+						csFlagsOffset = 0;
+					}
+				}
+				if (off >= 0x400) {
+					SYSLOG("user", "did not find p_csflags, cannot check or change p_csflags");
+					csFlagsOffset = 0;
 				}
 			}
+			else if (getKernelVersion() >= KernelVersion::Monterey) {
+				void *proc_ro = getMember<void *>(currproc, 0x20);
+				void *proc = getMember<void *>(proc_ro, 0x00);
+				if (proc == currproc) {
+					flags = &getMember<uint32_t>(proc_ro, 0x1c);
+					if (!(*flags & CS_KILLED)) {
+						DBGLOG("user", "using p_csflags proc 0x" PRIKADDR " -> proc_ro 0x" PRIKADDR " for Monterey", CASTKADDR((uint64_t)proc), CASTKADDR((uint64_t)proc_ro));
+						kern_return_t r = vm_protect(kernel_map, (vm_address_t)flags, sizeof(uint32_t), FALSE, VM_PROT_READ|VM_PROT_WRITE);
 
-			// Force xnu-4903.221.2 offset by default, 10.14.1 b5
-			if (csFlagsOffset != 0) {
-				DBGLOG("user", "found p_csflags offset %X", (uint32_t)csFlagsOffset);
-			} else {
-				SYSLOG("user", "falling back to hardcoded p_csflags offset");
-				csFlagsOffset = 0x308;
+						if (r != KERN_SUCCESS) {
+							SYSLOG("user", "W removal for proc_ro failed with %d", r); // KERN_PROTECTION_FAILURE
+
+							vmSetMaxProtection(kernel_map, (vm_address_t)flags, sizeof(uint32_t), VM_PROT_WRITE);
+							r = vm_protect(kernel_map, (vm_address_t)flags, sizeof(uint32_t), FALSE, VM_PROT_READ|VM_PROT_WRITE);
+
+							if (r == KERN_SUCCESS) {
+								SYSLOG("user", "W^X removal for proc_ro succeeded after changing max_protection");
+							}
+							else {
+								SYSLOG("user", "W^X removal also failed after changing max_protection");
+#if 0 // test_* is currently only for BigSur 11.6.4
+								r = test_vm_protect(kernel_map, (vm_address_t)flags, sizeof(uint32_t), FALSE, VM_PROT_READ|VM_PROT_WRITE);
+								SYSLOG("user", "retry with test_vm_protect result: %d", r);
+#endif
+							}
+						}
+
+						if (r != KERN_SUCCESS) {
+							flags = NULL;
+						}
+					}
+					else {
+						SYSLOG("user", "p_csflags has CS_KILLED");
+						flags = NULL;
+					}
+				}
+				else {
+					SYSLOG("user", "proc_ro for Monterey doesn't point to proc; cannot check or change p_csflags");
+				}
+			}
+			else if (csFlagsOffset) {
+				DBGLOG("user", "using p_csflags at default offset %X", (uint32_t)csFlagsOffset);
+			}
+			else {
+				DBGLOG("user", "no p_csflags; cannot check or change p_csflags");
 			}
 		}
 
-		uint32_t &flags = getMember<uint32_t>(currproc, csFlagsOffset);
-		if (flags & CS_ENFORCEMENT) {
-			DBGLOG("user", "W^X is enforced %X, disabling", flags);
-			flags &= ~(CS_KILL|CS_HARD|CS_ENFORCEMENT);
-			// Changing CS_HARD, CS_DEBUGGED, and vm_map switch protection is not required, yet may avoid issues
-			// in the future.
-			flags |= CS_DEBUGGED;
-			if (that->orgVmMapSwitchProtect)
-				that->orgVmMapSwitchProtect(that->orgGetTaskMap(currproc->task), false);
-			auto r = vm_protect(map, start, size, set_maximum, new_protection);
-			SYSLOG_COND(r != KERN_SUCCESS, "user", "W^X removal failed with %d", r);
-			// Initially thought that we could return CS_ENFORCEMENT, yet this causes certain binaries to crash,
-			// like WindowServer patched by -cdfon.
-			return r;
+		if (csFlagsOffset && !flags) {
+			flags = &getMember<uint32_t>(currproc, csFlagsOffset);
 		}
+
+		if (flags) {
+			dump_csFlags(*flags);
+
+			if (*flags & CS_ENFORCEMENT) {
+				DBGLOG("user", "W^X is enforced, disabling");
+				*flags &= ~(CS_KILL|CS_HARD|CS_ENFORCEMENT); // CS_NO_UNTRUSTED_HELPERS
+				// Changing CS_HARD, CS_DEBUGGED, and vm_map switch protection is not required, yet may avoid issues
+				// in the future.
+				*flags |= CS_DEBUGGED;
+				dump_csFlags(*flags);
+				if (that->orgVmMapSwitchProtect) {
+					DBGLOG("user", "calling orgVmMapSwitchProtect");
+					size_t taskOffset =
+						getKernelVersion() >= KernelVersion::Mojave      ? 0x10 :
+#if defined(__i386__)
+#else
+						getKernelVersion() >= KernelVersion::SnowLeopard ? 0x18 :
+#endif
+						0x0c;
+
+					that->orgVmMapSwitchProtect(that->orgGetTaskMap(getMember<task_t>(currproc, taskOffset)), false);
+				}
+				else {
+					DBGLOG("user", "not calling orgVmMapSwitchProtect");
+				}
+			}
+		}
+
+		kern_return_t r;
+		r = vm_protect(map, start, size, set_maximum, new_protection);
+		if (r != KERN_SUCCESS) {
+			SYSLOG("user", "W^X removal failed with %d", r); // KERN_PROTECTION_FAILURE
+
+			vmSetMaxProtection(map, start, size, new_protection);
+			r = vm_protect(map, start, size, set_maximum, new_protection);
+
+			if (r == KERN_SUCCESS) {
+				SYSLOG("user", "W^X removal succeeded after changing max_protection");
+			}
+			else {
+				SYSLOG("user", "W^X removal also failed after changing max_protection");
+#if 0 // test_* is currently only for BigSur 11.6.4
+				r = test_vm_protect(map, start, size, set_maximum, new_protection);
+				SYSLOG("user", "retry with test_vm_protect result: %d", r);
+
+				if (r != KERN_SUCCESS && !set_maximum) {
+					// let's try setting the maximum
+					kern_return_t r2;
+					r2 = vm_protect(map, start, size, true, new_protection);
+					SYSLOG("user", "set max result: %d", r2);
+					if (r2 != KERN_SUCCESS) {
+						r2 = test_vm_protect(map, start, size, true, new_protection);
+						SYSLOG("user", "set max test result: %d", r2);
+					}
+
+					if (r2 == KERN_SUCCESS) {
+						r = vm_protect(map, start, size, set_maximum, new_protection);
+						SYSLOG("user", "set prot after setting max result: %d", r);
+					}
+				}
+
+				if (r != KERN_SUCCESS && ! (new_protection & VM_PROT_COPY)) {
+					r = vm_protect(map, start, size, true, new_protection | VM_PROT_COPY);
+					SYSLOG("user", "set VM_PROT_COPY result: %d", r);
+					if (r != KERN_SUCCESS) {
+						r = test_vm_protect(map, start, size, true, new_protection | VM_PROT_COPY);
+						SYSLOG("user", "test set VM_PROT_COPY result: %d", r);
+					}
+				}
+#endif
+			}
+		}
+		// Initially thought that we could return CS_ENFORCEMENT, yet this causes certain binaries to crash,
+		// like WindowServer patched by -cdfon.
+		return r;
 	}
 
 	// Forward to the original proc routine

@@ -461,7 +461,7 @@ private:
 
 	evector<LookupStorage *, LookupStorage::deleter> lookupStorage;
 	Lookup lookup;
-	
+
 	/**
 	 *  Restrict 64-bit entry overlapping DYLD_SHARED_CACHE to enforce manual library loading
 	 */
@@ -597,12 +597,12 @@ private:
 	 *  DYLD shared cache path on older systems before Big Sur
 	 */
 	static constexpr const char *sharedCacheLegacy {"/private/var/db/dyld/dyld_shared_cache_x86_64"};
-	
+
 	/**
 	 *  DYLD shared cache map path on Haswell+ on Big Sur
 	 */
 	static constexpr const char *bigSurSharedCacheMapHaswell {"/System/Library/dyld/dyld_shared_cache_x86_64h.map"};
-	
+
 	/**
 	 *  DYLD shared cache map path on older systems on Big Sur
 	 */
@@ -622,7 +622,7 @@ private:
 	 *  DYLD shared cache map path on Haswell+ on Ventura
 	 */
 	static constexpr const char *venturaSharedCacheMapHaswell {"/System/Volumes/Preboot/Cryptexes/OS/System/Library/dyld/dyld_shared_cache_x86_64h.map"};
-	
+
 	/**
 	 *  DYLD shared cache map path on older systems on Ventura
 	 */
