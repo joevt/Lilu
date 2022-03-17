@@ -389,7 +389,7 @@ bool UserPatcher::registerPatches(ProcInfo **procs, size_t procNum, BinaryModInf
 	userCallback.first = callback;
 	userCallback.second = user;
 
-	if (procNum ) {
+	if (procNum) {
 		currentMinProcLength = procs[0]->len;
 		for (size_t i = 1; i < procNum; i++) {
 			if (procs[i]->len < currentMinProcLength)
@@ -434,17 +434,17 @@ void UserPatcher::performPagePatch(const void *data_ptr, size_t data_size) {
 					for (maybe = 0; maybe < sz; maybe++) {
 						if (lookup.c[i][maybe] == value) {
 							// We have a possible match
-							DBGLOG("user", "found a possible match for %lu of %llX", i, value);
+							DBGLOG("user", "found a possible match for %lu of %016llX", i, OSSwapHostToBigInt64(value));
 							break;
 						}
 					}
 				} else {
 					if (lookup.c[i][maybe] != value) {
 						// We failed
-						DBGLOG("user", "failure not matching %lu of %llX to expected %llX", i, value, lookup.c[i][maybe]);
+						DBGLOG("user", "failure not matching %lu of %016llX to expected %016llX", i, OSSwapHostToBigInt64(value), OSSwapHostToBigInt64(lookup.c[i][maybe]));
 						maybe = sz;
 					} else {
-						DBGLOG("user", "found a possible match for %lu of %llX", i, value);
+						DBGLOG("user", "found a possible match for %lu of %016llX", i, OSSwapHostToBigInt64(value));
 					}
 				}
 
@@ -466,7 +466,7 @@ void UserPatcher::performPagePatch(const void *data_ptr, size_t data_size) {
 							continue;
 						}
 
-						DBGLOG("user", "found what we are looking for %X %X %X %X %X %X %X %X", rpatch.find[0],
+						DBGLOG("user", "found what we are looking for %02X %02X %02X %02X %02X %02X %02X %02X", rpatch.find[0],
 								rpatch.size > 1 ? rpatch.find[1] : 0xff,
 								rpatch.size > 2 ? rpatch.find[2] : 0xff,
 								rpatch.size > 3 ? rpatch.find[3] : 0xff,
@@ -962,7 +962,7 @@ void UserPatcher::patchSharedCache(vm_map_t taskPort, uint32_t slide, cpu_type_t
 						auto r = orgVmMapReadUser(taskPort, place, tmp, patch.size);
 						if (!r) {
 							bool comparison = !memcmp(tmp, applyChanges? patch.find : patch.replace, patch.size);
-							DBGLOG("user", "%d/%d found %X %X %X %X", applyChanges, comparison, tmp[0], tmp[1], tmp[2], tmp[3]);
+							DBGLOG("user", "%d/%d found %02X %02X %02X %02X", applyChanges, comparison, tmp[0], tmp[1], tmp[2], tmp[3]);
 							if (comparison) {
 								r = vmProtect(taskPort, (vm_offset_t)(place & -PAGE_SIZE), PAGE_SIZE, FALSE, VM_PROT_READ|VM_PROT_WRITE|VM_PROT_EXECUTE);
 								if (r == KERN_SUCCESS) {
@@ -970,8 +970,7 @@ void UserPatcher::patchSharedCache(vm_map_t taskPort, uint32_t slide, cpu_type_t
 
 									r = orgVmMapWriteUser(taskPort, applyChanges ? patch.replace : patch.find, place, patch.size);
 
-									if (r != KERN_SUCCESS)
-										SYSLOG("user", "patching %llX -> res %d", place, r);
+									SYSLOG("user", "patching %llX -> result:%d", place, r);
 
 									r = vmProtect(taskPort, (vm_offset_t)(place & -PAGE_SIZE), PAGE_SIZE, FALSE, VM_PROT_READ|VM_PROT_EXECUTE);
 									if (r == KERN_SUCCESS)
@@ -1030,7 +1029,7 @@ size_t UserPatcher::mapAddresses(const char *mapBuf, MapEntry *mapEntries, size_
 				}
 			}
 
-		 // find section mappings or next line
+		// find section mappings or next line
 		for (; *ptr && *ptr != '\n'; ptr++) {};
 		if (!*ptr) break;
 
@@ -1079,7 +1078,7 @@ size_t UserPatcher::mapAddresses(const char *mapBuf, MapEntry *mapEntries, size_
 }
 
 bool UserPatcher::loadDyldSharedCacheMapping() {
-	DBGLOG("user", "[ UserPatcher::loadDyldSharedCacheMapping %lu", binaryModSize);
+	DBGLOG("user", "[ UserPatcher::loadDyldSharedCacheMapping binaryModSize:%lu", binaryModSize);
 
 	if (binaryModSize == 0) {
 		DBGLOG("user", "] UserPatcher::loadDyldSharedCacheMapping true");
@@ -1119,7 +1118,10 @@ bool UserPatcher::loadDyldSharedCacheMapping() {
 				DBGLOG("user", "mapped %lu entries out of %lu", nEntries, binaryModSize);
 
 				for (size_t i = 0; i < binaryModSize; i++) {
-					DBGLOG("user", "entry:%d TEXT:%llX..%llX DATA:%llX..%llX", (int)nEntries, (uint64_t)entries[i].startTEXT, (uint64_t)entries[i].endTEXT, (uint64_t)entries[i].startDATA, (uint64_t)entries[i].endDATA);
+					DBGLOG("user", "entry:%d TEXT:%llX..%llX DATA:%llX..%llX path:%s", (int)i,
+						(uint64_t)entries[i].startTEXT, (uint64_t)entries[i].endTEXT,
+						(uint64_t)entries[i].startDATA, (uint64_t)entries[i].endDATA,
+						entries[i].filename ? entries[i].filename : "NULL");
 					binaryMod[i]->startTEXT = entries[i].startTEXT;
 					binaryMod[i]->endTEXT = entries[i].endTEXT;
 					binaryMod[i]->startDATA = entries[i].startDATA;
@@ -1161,9 +1163,9 @@ bool UserPatcher::loadFilesForPatching() {
 		}
 
 		if (hasPatches) {
-			DBGLOG("user", "requesting file %s at %lu", binaryMod[i]->path, i);
+			DBGLOG("user", "[ requesting file %s at %lu", binaryMod[i]->path, i);
 		} else {
-			DBGLOG("user", "ignoring file %s at %lu, no mods out of %lu apply", binaryMod[i]->path, i, binaryMod[i]->count);
+			DBGLOG("user", "[] ignoring file %s at %lu, no mods out of %lu apply", binaryMod[i]->path, i, binaryMod[i]->count);
 			continue;
 		}
 
@@ -1175,21 +1177,23 @@ bool UserPatcher::loadFilesForPatching() {
 			void *sectionptr {nullptr};
 			size_t size {0};
 
-			DBGLOG("user", "have %lu mods for %s (read as %lu)", binaryMod[i]->count, binaryMod[i]->path, fileSize);
+			DBGLOG("user", "have %lu mods for %s (fileSize:%lu)", binaryMod[i]->count, binaryMod[i]->path, fileSize);
 
 			for (size_t p = 0; p < binaryMod[i]->count; p++) {
 				auto &patch = binaryMod[i]->patches[p];
 
 				if (patch.section == ProcInfo::SectionDisabled) {
-					DBGLOG("user", "skipping not requested patch %s for %lu", binaryMod[i]->path, p);
+					DBGLOG("user", "[] skipping not requested patch %s for %lu", binaryMod[i]->path, p);
 					continue;
 				}
 
 				if (patch.segment >= FileSegment::SegmentTotal) {
-					SYSLOG("user", "skipping patch %s for %lu with invalid segment id %u", binaryMod[i]->path, p, patch.segment);
+					SYSLOG("user", "[] skipping patch %s for %lu with invalid segment id %u", binaryMod[i]->path, p, patch.segment);
 					continue;
 				}
 
+				DBGLOG("user", "[ mod %lu", p);
+				
 				MachInfo::findSectionBounds(buf, fileSize, vmsegment, vmsection, sectionptr, size,
 											fileSegments[patch.segment], fileSections[patch.segment], patch.cpu);
 
@@ -1205,7 +1209,7 @@ bool UserPatcher::loadFilesForPatching() {
 
 					while (start < end && count) {
 						if (!memcmp(start, patch.find, patch.size)) {
-							DBGLOG("user", "found entry of %X %X patch", patch.find[0], patch.find[1]);
+							DBGLOG("user", "found entry of %02X %02X %02X %02X patch", patch.find[0], patch.find[1], patch.find[2], patch.find[3]);
 
 							if (skip == 0) {
 								off_t sectOff = start - reinterpret_cast<uint8_t *>(sectionptr);
@@ -1236,9 +1240,9 @@ bool UserPatcher::loadFilesForPatching() {
 											entry->pageOff = pageOff;
 											// Now copy page data
 											lilu_os_memcpy(entry->page->p, reinterpret_cast<uint8_t *>(sectionptr) + pageOff, PAGE_SIZE);
-											DBGLOG("user", "first page bytes are %X %X %X %X %X %X %X %X",
-												   entry->page->p[0], entry->page->p[1], entry->page->p[2], entry->page->p[3],
-												   entry->page->p[4], entry->page->p[5], entry->page->p[6], entry->page->p[7]);
+											DBGLOG("user", "first page bytes are %02X %02X %02X %02X %02X %02X %02X %02X",
+												entry->page->p[0], entry->page->p[1], entry->page->p[2], entry->page->p[3],
+												entry->page->p[4], entry->page->p[5], entry->page->p[6], entry->page->p[7]);
 											// Save entry in lookupStorage
 											if (!lookupStorage.push_back<2>(entry)) {
 												SYSLOG("user", "failed to push entry to LookupStorage");
@@ -1297,11 +1301,13 @@ bool UserPatcher::loadFilesForPatching() {
 				} else {
 					SYSLOG("user", "failed to obtain a corresponding section");
 				}
-			}
+				DBGLOG("user", "] mod %lu", p);
+			} // for patch
 
 			Buffer::deleter(buf);
 		}
-	}
+		DBGLOG("user", "]");
+	} // for binaryMod
 	DBGLOG("user", "] UserPatcher::loadFilesForPatching true");
 	return true;
 }

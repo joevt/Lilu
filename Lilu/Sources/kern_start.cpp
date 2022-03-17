@@ -224,7 +224,7 @@ int Configuration::policyCheckRemount(kauth_cred_t, mount *, label *) {
 }
 
 int Configuration::policyCredCheckLabelUpdateExecve(kauth_cred_t, vnode_t, ...) {
-	DBGLOG("config", "Configuration::policyCredCheckLabelUpdateExecve");
+	//DBGLOG("config", "Configuration::policyCredCheckLabelUpdateExecve"); // this is called too often in Catalina
 	ADDPR(config).policyInit("mac_cred_check_label_update_execve");
 	return 0;
 }

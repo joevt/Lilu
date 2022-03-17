@@ -188,17 +188,17 @@ public:
 	 *  Initialise kernel and user patchers from policy handler
 	 */
 	void policyInit(const char *name) {
-        DBGLOG("config", "[ Configuration::policyInit %s", name);
 		// Outer check is used here to avoid unnecessary locking after we initialise
 		if (!atomic_load_explicit(&initialised, memory_order_relaxed)) {
+			DBGLOG("config", "[ Configuration::policyInit %s", name); // only report policyInit when not initialised because some policies like execve are called repeatedly in Catalina
 			IOLockLock(policyLock);
 			if (!atomic_load_explicit(&initialised, memory_order_relaxed)) {
 				DBGLOG("config", "init via %s", name);
 				performInit();
 			}
 			IOLockUnlock(policyLock);
+			DBGLOG("config", "] Configuration::policyInit %s", name);
 		}
-        DBGLOG("config", "] Configuration::policyInit %s", name);
 	}
 	
 	/**
