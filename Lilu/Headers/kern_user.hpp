@@ -256,6 +256,7 @@ private:
 	using vm_map_entry_t = void *;
 	using vm_shared_region_t = void *;
 	using shared_file_mapping_np = void *;
+	using sr_file_mappings = void *;
 	using t_currentMap = vm_map_t (*)(void);
 	using t_getTaskMap = vm_map_t (*)(task_t);
 	using t_getMapMin = vm_map_offset_t (*)(vm_map_t);
@@ -272,7 +273,6 @@ private:
 	mach_vm_address_t orgCodeSignValidateRangeWrapper {};
 	mach_vm_address_t orgVmSharedRegionMapFile {};
 	mach_vm_address_t orgVmSharedRegionSlide {};
-	mach_vm_address_t orgVmSharedRegionSlideMojave {};
 	t_currentMap orgCurrentMap {nullptr};
 	t_getMapMin orgGetMapMin {nullptr};
 	t_getTaskMap orgGetTaskMap {nullptr};
@@ -286,14 +286,26 @@ private:
 	/**
 	 *  Kernel function wrappers
 	 */
-	static boolean_t codeSignValidatePageWrapper(void *blobs, memory_object_t pager, memory_object_offset_t page_offset, const void *data, unsigned *tainted);
-	static boolean_t codeSignValidateRangeWrapper(void *blobs, memory_object_t pager, memory_object_offset_t range_offset, const void *data, memory_object_size_t data_size, unsigned *tainted);
+	static boolean_t codeSignValidateRangeWrapper           (vnode_t vp , memory_object_t pager, memory_object_offset_t range_offset, const void *data, memory_object_size_t data_size, unsigned *tainted);
+	static boolean_t codeSignValidatePageWrapperBigSur      (vnode_t vp , memory_object_t pager, memory_object_offset_t page_offset , const void *data, int *validated_p,                    int *tainted_p, int *nx_p);
+	static boolean_t codeSignValidatePageWrapperYosemite    (void *blobs, memory_object_t pager, memory_object_offset_t page_offset , const void *data,                                 unsigned *tainted);
+	static boolean_t codeSignValidatePageWrapperMountainLion(void *blobs, memory_object_t pager, memory_object_offset_t page_offset , const void *data,                                boolean_t *tainted);
+	static boolean_t codeSignValidatePageWrapperLeopard     (void *blobs,                        memory_object_offset_t page_offset , const void *data,                                boolean_t *tainted);
+
 	static vm_map_t swapTaskMap(task_t task, thread_t thread, vm_map_t map, boolean_t doswitch);
 	static vm_map_t vmMapSwitch(vm_map_t map);
-	static kern_return_t vmSharedRegionMapFile(vm_shared_region_t shared_region, unsigned int mappings_count, shared_file_mapping_np *mappings, memory_object_control_t file_control, memory_object_size_t file_size, void *root_dir, uint32_t slide, user_addr_t slide_start, user_addr_t slide_size);
+
+	static kern_return_t vmSharedRegionMapFileBigSur   (vm_shared_region_t shared_region,       int sr_mappings_count, sr_file_mappings *sr_mappings);
+	static kern_return_t vmSharedRegionMapFileMavericks(vm_shared_region_t shared_region, unsigned int mappings_count, shared_file_mapping_np *mappings, memory_object_control_t file_control, memory_object_size_t file_size, void *root_dir, uint32_t slide, user_addr_t slide_start, user_addr_t slide_size);
+	static kern_return_t vmSharedRegionMapFileLion     (vm_shared_region_t shared_region, unsigned int mappings_count, shared_file_mapping_np *mappings, memory_object_control_t file_control, memory_object_size_t file_size, void *root_dir, shared_file_mapping_np *mapping_to_slide);
+	static kern_return_t vmSharedRegionMapFileLeopard  (vm_shared_region_t shared_region, unsigned int mappings_count, shared_file_mapping_np *mappings, memory_object_control_t file_control, memory_object_size_t file_size, void *root_dir);
+
+	static int vmSharedRegionSlideBigSur   (uint32_t slide, mach_vm_offset_t entry_start_address, mach_vm_size_t entry_size, mach_vm_offset_t slide_start, mach_vm_size_t slide_size, mach_vm_offset_t slid_mapping, memory_object_control_t sr_file_control, vm_prot_t prot);
+	static int vmSharedRegionSlideMojave   (uint32_t slide, mach_vm_offset_t entry_start_address, mach_vm_size_t entry_size, mach_vm_offset_t slide_start, mach_vm_size_t slide_size, mach_vm_offset_t slid_mapping, memory_object_control_t sr_file_control);
+	static int vmSharedRegionSlideMavericks(uint32_t slide, mach_vm_offset_t entry_start_address, mach_vm_size_t entry_size, mach_vm_offset_t slide_start, mach_vm_size_t slide_size, memory_object_control_t sr_file_control);
+	static kern_return_t vmSharedRegionSlideLion(vm_offset_t vaddr, uint32_t pageIndex);
+	
 	static void execsigs(proc_t p, thread_t thread);
-	static int vmSharedRegionSlide(uint32_t slide, mach_vm_offset_t entry_start_address, mach_vm_size_t entry_size, mach_vm_offset_t slide_start, mach_vm_size_t slide_size, memory_object_control_t sr_file_control);
-	static int vmSharedRegionSlideMojave(uint32_t slide, mach_vm_offset_t entry_start_address, mach_vm_size_t entry_size, mach_vm_offset_t slide_start, mach_vm_size_t slide_size, mach_vm_offset_t slid_mapping, memory_object_control_t sr_file_control);
 	static void taskSetMainThreadQos(task_t task, thread_t main_thread);
 
 	/**
@@ -301,8 +313,9 @@ private:
 	 *
 	 *  @param data_ptr  pages in kernel memory
 	 *  @param data_size data size divisible by PAGE_SIZE
+	 *  @param vp vnode that the pages belong to
 	 */
-	void performPagePatch(const void *data_ptr, size_t data_size);
+	void performPagePatch(const void *data_ptr, size_t data_size, vnode_t vp);
 
 	/**
 	 * dyld shared cache map entry structure
