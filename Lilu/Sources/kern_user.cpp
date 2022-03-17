@@ -421,7 +421,27 @@ void UserPatcher::deinit() {
 	DBGLOG("user", "] UserPatcher::deinit");
 }
 
-void UserPatcher::performPagePatch(const void *data_ptr, size_t data_size) {
+void UserPatcher::performPagePatch(const void *data_ptr, size_t data_size, vnode_t vp) {
+	if (vp && getKernelVersion() >= KernelVersion::BigSur) {
+		char path[PATH_MAX];
+		int pathlen = PATH_MAX;
+		if (vn_getpath(vp, path, &pathlen) == 0) {
+			for (size_t i = 0; i < binaryModSize; i++) {
+				if (!strcmp(binaryMod[i]->path, path) || (binaryMod[i]->startTEXT && UserPatcher::matchSharedCachePath(path))) { // startTEXT is only set for shared dyld cache
+					// TO DO: check process info
+					for (size_t p = 0; p < binaryMod[i]->count; p++) {
+						if (binaryMod[i]->patches[p].section != ProcInfo::SectionDisabled) {
+							// TO DO: check cpu, flags, skip, count, segment
+							if (UNLIKELY(KernelPatcher::findAndReplace(const_cast<void *>(data_ptr), data_size, binaryMod[i]->patches[p].find, binaryMod[i]->patches[p].size, binaryMod[i]->patches[p].replace, binaryMod[i]->patches[p].size))) {
+								DBGLOG("user", "performPagePatch mod:%d patch:%d size:%d path:%s modpath:%s", (int)i, (int)p, (int)binaryMod[i]->patches[p].size, path, binaryMod[i]->path);
+							}
+						}
+					} // for patch
+				} // if name match
+			} // for binaryMod
+		}
+	}
+
 	for (size_t data_off = 0; data_off < data_size; data_off += PAGE_SIZE) {
 		size_t sz = that->lookupStorage.size();
 		size_t maybe = 0;
@@ -516,18 +536,33 @@ void UserPatcher::performPagePatch(const void *data_ptr, size_t data_size) {
 	}
 }
 
-boolean_t UserPatcher::codeSignValidatePageWrapper(void *blobs, memory_object_t pager, memory_object_offset_t page_offset, const void *data, unsigned *tainted) {
-	boolean_t res = FunctionCast(codeSignValidatePageWrapper, that->orgCodeSignValidatePageWrapper)(blobs, pager, page_offset, data, tainted);
-	if (res) that->performPagePatch(data, PAGE_SIZE);
+boolean_t UserPatcher::codeSignValidatePageWrapperBigSur(vnode_t vp, memory_object_t pager, memory_object_offset_t page_offset, const void *data, int *validated_p, int *tainted_p, int *nx_p) {
+	boolean_t res = FunctionCast(codeSignValidatePageWrapperBigSur, that->orgCodeSignValidatePageWrapper)(vp, pager, page_offset, data, validated_p, tainted_p, nx_p);
+	if (res) that->performPagePatch(data, PAGE_SIZE, vp);
 	return res;
 }
 
-boolean_t UserPatcher::codeSignValidateRangeWrapper(void *blobs, memory_object_t pager, memory_object_offset_t range_offset, const void *data, memory_object_size_t data_size, unsigned *tainted) {
-	boolean_t res = FunctionCast(codeSignValidateRangeWrapper, that->orgCodeSignValidateRangeWrapper)(blobs, pager, range_offset, data, data_size, tainted);
+boolean_t UserPatcher::codeSignValidatePageWrapperYosemite(void *blobs, memory_object_t pager, memory_object_offset_t page_offset, const void *data, unsigned *tainted) {
+	boolean_t res = FunctionCast(codeSignValidatePageWrapperYosemite, that->orgCodeSignValidatePageWrapper)(blobs, pager, page_offset, data, tainted);
+	if (res) that->performPagePatch(data, PAGE_SIZE, NULL);
+	return res;
+}
 
-	if (res)
-		that->performPagePatch(data, (size_t)data_size);
+boolean_t UserPatcher::codeSignValidatePageWrapperMountainLion(void *blobs, memory_object_t pager, memory_object_offset_t page_offset, const void *data, boolean_t *tainted) {
+	boolean_t res = FunctionCast(codeSignValidatePageWrapperMountainLion, that->orgCodeSignValidatePageWrapper)(blobs, pager, page_offset, data, tainted);
+	if (res) that->performPagePatch(data, PAGE_SIZE, NULL);
+	return res;
+}
 
+boolean_t UserPatcher::codeSignValidatePageWrapperLeopard(void *blobs, memory_object_offset_t page_offset, const void *data, boolean_t *tainted) {
+	boolean_t res = FunctionCast(codeSignValidatePageWrapperLeopard, that->orgCodeSignValidatePageWrapper)(blobs, page_offset, data, tainted);
+	if (res) that->performPagePatch(data, PAGE_SIZE, NULL);
+	return res;
+}
+
+boolean_t UserPatcher::codeSignValidateRangeWrapper(vnode_t vp, memory_object_t pager, memory_object_offset_t range_offset, const void *data, memory_object_size_t data_size, unsigned *tainted) {
+	boolean_t res = FunctionCast(codeSignValidateRangeWrapper, that->orgCodeSignValidateRangeWrapper)(vp, pager, range_offset, data, data_size, tainted);
+	if (res) that->performPagePatch(data, (size_t)data_size, vp);
 	return res;
 }
 
@@ -879,32 +914,69 @@ bool UserPatcher::injectPayload(vm_map_t taskPort, uint8_t *payload, size_t size
 	return true;
 }
 
-kern_return_t UserPatcher::vmSharedRegionMapFile(vm_shared_region_t shared_region, unsigned int mappings_count, shared_file_mapping_np *mappings, memory_object_control_t file_control, memory_object_size_t file_size, void *root_dir, uint32_t slide, user_addr_t slide_start, user_addr_t slide_size) {
-	DBGLOG("user", "[ UserPatcher::vmSharedRegionSlide slide:%d", slide);
-	auto res = FunctionCast(vmSharedRegionMapFile, that->orgVmSharedRegionMapFile)(shared_region, mappings_count, mappings, file_control, file_size, root_dir, slide, slide_start, slide_size);
-	if (!slide) {
-		that->patchSharedCache(that->orgCurrentMap(), 0, CPU_TYPE_X86_64);
-	}
-	DBGLOG("user", "] UserPatcher::vmSharedRegionMapFile result:%d", res);
+kern_return_t UserPatcher::vmSharedRegionMapFileBigSur(vm_shared_region_t shared_region, int sr_mappings_count, sr_file_mappings *sr_mappings) {
+	DBGLOG("user", "[ UserPatcher::vmSharedRegionMapFileBigSur");
+	auto res = FunctionCast(vmSharedRegionMapFileBigSur, that->orgVmSharedRegionMapFile)(shared_region, sr_mappings_count, sr_mappings);
+	//that->patchSharedCache(that->orgCurrentMap(), 0, CPU_TYPE_X86_64);
+	DBGLOG("user", "] UserPatcher::vmSharedRegionMapFileBigSur result:%d", res);
 	return res;
 }
 
-int UserPatcher::vmSharedRegionSlide(uint32_t slide, mach_vm_offset_t entry_start_address, mach_vm_size_t entry_size, mach_vm_offset_t slide_start, mach_vm_size_t slide_size, memory_object_control_t sr_file_control) {
-	DBGLOG("user", "[ UserPatcher::vmSharedRegionSlide slide:%X start:%llX size:%llX slide_start:%llX slide_size%llX", slide, entry_start_address, entry_size, slide_start, slide_size);
+kern_return_t UserPatcher::vmSharedRegionMapFileMavericks(vm_shared_region_t shared_region, unsigned int mappings_count, shared_file_mapping_np *mappings, memory_object_control_t file_control, memory_object_size_t file_size, void *root_dir, uint32_t slide, user_addr_t slide_start, user_addr_t slide_size) {
+	DBGLOG("user", "[ UserPatcher::vmSharedRegionMapFileMavericks slide:%X", slide);
+	auto res = FunctionCast(vmSharedRegionMapFileMavericks, that->orgVmSharedRegionMapFile)(shared_region, mappings_count, mappings, file_control, file_size, root_dir, slide, slide_start, slide_size);
+	if (!slide) {
+		that->patchSharedCache(that->orgCurrentMap(), 0, CPU_TYPE_X86_64);
+	}
+	DBGLOG("user", "] UserPatcher::vmSharedRegionMapFileMavericks result:%d", res);
+	return res;
+}
+
+kern_return_t UserPatcher::vmSharedRegionMapFileLion(vm_shared_region_t shared_region, unsigned int mappings_count, shared_file_mapping_np *mappings, memory_object_control_t file_control, memory_object_size_t file_size, void *root_dir, shared_file_mapping_np *mapping_to_slide) {
+	DBGLOG("user", "[ UserPatcher::vmSharedRegionMapFileLion");
+	auto res = FunctionCast(vmSharedRegionMapFileLion, that->orgVmSharedRegionMapFile)(shared_region, mappings_count, mappings, file_control, file_size, root_dir, mapping_to_slide);
+	//that->patchSharedCache(that->orgCurrentMap(), 0, CPU_TYPE_X86_64);
+	DBGLOG("user", "] UserPatcher::vmSharedRegionMapFileLion result:%d", res);
+	return res;
+}
+
+kern_return_t UserPatcher::vmSharedRegionMapFileLeopard(vm_shared_region_t shared_region, unsigned int mappings_count, shared_file_mapping_np *mappings, memory_object_control_t file_control, memory_object_size_t file_size, void *root_dir) {
+	DBGLOG("user", "[ UserPatcher::vmSharedRegionMapFileLeopard");
+	auto res = FunctionCast(vmSharedRegionMapFileLeopard, that->orgVmSharedRegionMapFile)(shared_region, mappings_count, mappings, file_control, file_size, root_dir);
+	//that->patchSharedCache(that->orgCurrentMap(), 0, CPU_TYPE_X86_64);
+	DBGLOG("user", "] UserPatcher::vmSharedRegionMapFileLeopard result:%d", res);
+	return res;
+}
+
+int UserPatcher::vmSharedRegionSlideBigSur(uint32_t slide, mach_vm_offset_t entry_start_address, mach_vm_size_t entry_size, mach_vm_offset_t slide_start, mach_vm_size_t slide_size, mach_vm_offset_t slid_mapping, memory_object_control_t sr_file_control, vm_prot_t prot) {
+	DBGLOG("user", "[ UserPatcher::vmSharedRegionSlideBigSur slide:%X start:%llX size:%llX slide_start:%llX slide_size:%llX prot:%X", slide, entry_start_address, entry_size, slide_start, slide_size, prot);
 	that->patchSharedCache(that->orgCurrentMap(), slide, CPU_TYPE_X86_64);
-	int result = FunctionCast(vmSharedRegionSlide, that->orgVmSharedRegionSlide)(slide, entry_start_address, entry_size, slide_start, slide_size, sr_file_control);
-	DBGLOG("user", "] UserPatcher::vmSharedRegionSlide result:%d", result);
+	int result = FunctionCast(vmSharedRegionSlideBigSur, that->orgVmSharedRegionSlide)(slide, entry_start_address, entry_size, slide_start, slide_size, slid_mapping, sr_file_control, prot);
+	DBGLOG("user", "] UserPatcher::vmSharedRegionSlideBigSur result:%d", result);
 	return result;
 }
 
 int UserPatcher::vmSharedRegionSlideMojave(uint32_t slide, mach_vm_offset_t entry_start_address, mach_vm_size_t entry_size, mach_vm_offset_t slide_start, mach_vm_size_t slide_size, mach_vm_offset_t slid_mapping, memory_object_control_t sr_file_control) {
-
-	DBGLOG("user", "[ UserPatcher::vmSharedRegionSlideMojave slide:%X start:%llX size:%llX slide_start:%llX slide_size%llX", slide, entry_start_address, entry_size, slide_start, slide_size);
-
+	DBGLOG("user", "[ UserPatcher::vmSharedRegionSlideMojave slide:%X start:%llX size:%llX slide_start:%llX slide_size:%llX", slide, entry_start_address, entry_size, slide_start, slide_size);
 	that->patchSharedCache(that->orgCurrentMap(), slide, CPU_TYPE_X86_64);
-
-	int result = FunctionCast(vmSharedRegionSlideMojave, that->orgVmSharedRegionSlideMojave)(slide, entry_start_address, entry_size, slide_start, slide_size, slid_mapping, sr_file_control);
+	int result = FunctionCast(vmSharedRegionSlideMojave, that->orgVmSharedRegionSlide)(slide, entry_start_address, entry_size, slide_start, slide_size, slid_mapping, sr_file_control);
 	DBGLOG("user", "] UserPatcher::vmSharedRegionSlideMojave result:%d", result);
+	return result;
+}
+
+int UserPatcher::vmSharedRegionSlideMavericks(uint32_t slide, mach_vm_offset_t entry_start_address, mach_vm_size_t entry_size, mach_vm_offset_t slide_start, mach_vm_size_t slide_size, memory_object_control_t sr_file_control) {
+	DBGLOG("user", "[ UserPatcher::vmSharedRegionSlideMavericks slide:%X start:%llX size:%llX slide_start:%llX slide_size:%llX", slide, entry_start_address, entry_size, slide_start, slide_size);
+	that->patchSharedCache(that->orgCurrentMap(), slide, CPU_TYPE_X86_64);
+	int result = FunctionCast(vmSharedRegionSlideMavericks, that->orgVmSharedRegionSlide)(slide, entry_start_address, entry_size, slide_start, slide_size, sr_file_control);
+	DBGLOG("user", "] UserPatcher::vmSharedRegionSlideMavericks result:%d", result);
+	return result;
+}
+
+kern_return_t UserPatcher::vmSharedRegionSlideLion(vm_offset_t vaddr, uint32_t pageIndex) {
+	DBGLOG("user", "[ UserPatcher::vmSharedRegionSlideLion vaddr:%lX pageIndex:%X", vaddr, pageIndex);
+	//that->patchSharedCache(that->orgCurrentMap(), slide, CPU_TYPE_X86_64);
+	kern_return_t result = FunctionCast(vmSharedRegionSlideLion, that->orgVmSharedRegionSlide)(vaddr, pageIndex);
+	DBGLOG("user", "] UserPatcher::vmSharedRegionSlideLion result:%d", result);
 	return result;
 }
 
@@ -1504,15 +1576,24 @@ bool UserPatcher::vmSetMaxProtection(
 
 bool UserPatcher::hookMemoryAccess() {
 	DBGLOG("user", "[ UserPatcher::hookMemoryAccess");
-	// 10.12 and newer
-	KernelPatcher::RouteRequest rangeRoute {"_cs_validate_range", codeSignValidateRangeWrapper, orgCodeSignValidateRangeWrapper};
-	if (!patcher->routeMultipleLong(KernelPatcher::KernelID, &rangeRoute, 1)) {
-		KernelPatcher::RouteRequest pageRoute {"_cs_validate_page", codeSignValidatePageWrapper, orgCodeSignValidatePageWrapper};
-		if (!patcher->routeMultipleLong(KernelPatcher::KernelID, &pageRoute, 1)) {
-			SYSLOG("user", "failed to resolve _cs_validate function");
-			DBGLOG("user", "] UserPatcher::hookMemoryAccess false");
-			return false;
-		}
+
+	KernelPatcher::RouteRequest pageRoute =
+		getKernelVersion() >= KernelVersion::BigSur ?
+			KernelPatcher::RouteRequest("_cs_validate_page" , codeSignValidatePageWrapperBigSur      , orgCodeSignValidatePageWrapper ) // 11
+		: getKernelVersion() >= KernelVersion::Sierra ?
+			KernelPatcher::RouteRequest("_cs_validate_range", codeSignValidateRangeWrapper           , orgCodeSignValidateRangeWrapper) // 10.12, 10.13, 10.14, 10.15 // this exists for 11 but it doesn't get used
+		: getKernelVersion() >= KernelVersion::Yosemite ?
+			KernelPatcher::RouteRequest("_cs_validate_page" , codeSignValidatePageWrapperYosemite    , orgCodeSignValidatePageWrapper ) // 10.10, 10.11
+		: getKernelVersion() >= KernelVersion::MountainLion ?
+			KernelPatcher::RouteRequest("_cs_validate_page" , codeSignValidatePageWrapperMountainLion, orgCodeSignValidatePageWrapper ) // 10.8, 10.9
+		: getKernelVersion() >= KernelVersion::Leopard ?
+			KernelPatcher::RouteRequest("_cs_validate_page" , codeSignValidatePageWrapperLeopard     , orgCodeSignValidatePageWrapper ) // 10.5, 10.6, 10.7
+		:
+			KernelPatcher::RouteRequest(NULL, NULL);
+	if (pageRoute.symbol && !patcher->routeMultipleLong(KernelPatcher::KernelID, &pageRoute, 1)) {
+		SYSLOG("user", "failed to resolve _cs_validate function");
+		DBGLOG("user", "] UserPatcher::hookMemoryAccess false");
+		return false;
 	}
 
 	orgCurrentMap = reinterpret_cast<t_currentMap>(patcher->solveSymbol(KernelPatcher::KernelID, "_current_map"));
@@ -1589,28 +1670,41 @@ bool UserPatcher::hookMemoryAccess() {
 	}
 
 	if (patchDyldSharedCache) {
-		KernelPatcher::RouteRequest mapRoute {"_vm_shared_region_map_file", vmSharedRegionMapFile, orgVmSharedRegionMapFile};
-		if (!patcher->routeMultipleLong(KernelPatcher::KernelID, &mapRoute, 1)) {
+
+		KernelPatcher::RouteRequest mapRoute =
+			getKernelVersion() >= KernelVersion::BigSur ?
+				KernelPatcher::RouteRequest("_vm_shared_region_map_file", vmSharedRegionMapFileBigSur   , orgVmSharedRegionMapFile) // 11
+			: getKernelVersion() >= KernelVersion::Mavericks ?
+				KernelPatcher::RouteRequest("_vm_shared_region_map_file", vmSharedRegionMapFileMavericks, orgVmSharedRegionMapFile) // 10.9, 10.10, 10.11, 10.12, 10.13, 10.14, 10.15
+			: getKernelVersion() >= KernelVersion::Lion ?
+				KernelPatcher::RouteRequest("_vm_shared_region_map_file", vmSharedRegionMapFileLion     , orgVmSharedRegionMapFile) // 10.7, 10.8
+			: getKernelVersion() >= KernelVersion::Leopard ?
+				KernelPatcher::RouteRequest("_vm_shared_region_map_file", vmSharedRegionMapFileLeopard  , orgVmSharedRegionMapFile) // 10.5, 10.6
+			:
+				KernelPatcher::RouteRequest(NULL, NULL);
+		if (mapRoute.symbol && !patcher->routeMultipleLong(KernelPatcher::KernelID, &mapRoute, 1)) {
 			SYSLOG("user", "failed to hook _vm_shared_region_map_file");
 			DBGLOG("user", "] UserPatcher::hookMemoryAccess false");
 			return false;
 		}
 
-		if (getKernelVersion() >= KernelVersion::Mojave) {
-			KernelPatcher::RouteRequest sharedRegionRoute {"_vm_shared_region_slide", vmSharedRegionSlideMojave, orgVmSharedRegionSlideMojave};
-			if (!patcher->routeMultipleLong(KernelPatcher::KernelID, &sharedRegionRoute, 1)) {
-				SYSLOG("user", "failed to hook _vm_shared_region_slide");
-	            DBGLOG("user", "] UserPatcher::hookMemoryAccess false");
-				return false;
-			}
-		} else {
-			KernelPatcher::RouteRequest sharedRegionRoute {"_vm_shared_region_slide", vmSharedRegionSlide, orgVmSharedRegionSlide};
-			if (!patcher->routeMultipleLong(KernelPatcher::KernelID, &sharedRegionRoute, 1)) {
-				SYSLOG("user", "failed to hook _vm_shared_region_slide");
-				DBGLOG("user", "] UserPatcher::hookMemoryAccess false");
-				return false;
-			}
+		KernelPatcher::RouteRequest sharedRegionRoute =
+			getKernelVersion() >= KernelVersion::BigSur ?
+				KernelPatcher::RouteRequest("_vm_shared_region_slide", vmSharedRegionSlideBigSur   , orgVmSharedRegionSlide) // 11
+			: getKernelVersion() >= KernelVersion::Mojave ?
+				KernelPatcher::RouteRequest("_vm_shared_region_slide", vmSharedRegionSlideMojave   , orgVmSharedRegionSlide) // 10.14, 10.15
+			: getKernelVersion() >= KernelVersion::Mavericks ?
+				KernelPatcher::RouteRequest("_vm_shared_region_slide", vmSharedRegionSlideMavericks, orgVmSharedRegionSlide) // 10.9, 10.10, 10.11, 10.12, 10.13
+			: getKernelVersion() >= KernelVersion::Lion ?
+				KernelPatcher::RouteRequest("_vm_shared_region_slide", vmSharedRegionSlideLion     , orgVmSharedRegionSlide) // 10.7, 10.8
+			:
+				KernelPatcher::RouteRequest(NULL, NULL);
+		if (sharedRegionRoute.symbol && !patcher->routeMultipleLong(KernelPatcher::KernelID, &sharedRegionRoute, 1)) {
+			SYSLOG("user", "failed to hook _vm_shared_region_slide");
+			DBGLOG("user", "] UserPatcher::hookMemoryAccess false");
+			return false;
 		}
+
 	}
 
 	DBGLOG("user", "] UserPatcher::hookMemoryAccess true");
