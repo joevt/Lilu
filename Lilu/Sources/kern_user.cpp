@@ -585,19 +585,22 @@ void UserPatcher::onPath(const char *path, uint32_t len) {
 void UserPatcher::patchBinary(vm_map_t map, const char *path, uint32_t len) {
 	DBGLOG("user", "[ UserPatcher::patchBinary path:%s", path);
 	if (patchDyldSharedCache && sharedCacheSlideStored) {
+		// note: patchSharedCache doesn't do anything if lookupStorage is empty
 		patchSharedCache(map, storedSharedCacheSlide, CPU_TYPE_X86_64);
 	}
-	if (!patchDyldSharedCache || !sharedCacheSlideStored || !lookupStorage.size()) {
-		// patchSharedCache doesn't do anything if lookupStorage is empty so use fallback in that case
+	if (!patchDyldSharedCache || !sharedCacheSlideStored/* || !lookupStorage.size() */) {
 		if (patchDyldSharedCache) {
 			SYSLOG("user", "%s%sfallback to restrict",
 				sharedCacheSlideStored ? "" : "no slide present, ",
-				lookupStorage.size() ? "" : "no lookupStorage, ");
+				lookupStorage.size() ? "" : "no lookupStorage, do not ");
+			if (lookupStorage.size()) {
+				injectRestrict(map);
+			}
 		}
 		else {
 			SYSLOG("user", "fallback to restrict");
+			injectRestrict(map);
 		}
-		injectRestrict(map);
 	}
 	userCallback.first(userCallback.second, *this, map, path, len);
 	DBGLOG("user", "] UserPatcher::patchBinary path:%s", path);
