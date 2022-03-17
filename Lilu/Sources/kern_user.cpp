@@ -358,6 +358,7 @@ bool UserPatcher::init(KernelPatcher &kernelPatcher, bool preferSlowMode) {
 	that = this;
 	patchDyldSharedCache = !preferSlowMode;
 	patcher = &kernelPatcher;
+	hookMemoryAccess(); // hook early
 	get_kernel_externals(*patcher);
 
 	pending.init();
@@ -397,7 +398,7 @@ bool UserPatcher::registerPatches(ProcInfo **procs, size_t procNum, BinaryModInf
 		}
 	}
 
-	bool result = loadFilesForPatching() && (!patchDyldSharedCache || loadDyldSharedCacheMapping()) && loadLookups() && hookMemoryAccess();
+	bool result = loadFilesForPatching() && (!patchDyldSharedCache || loadDyldSharedCacheMapping()) && loadLookups();
 	DBGLOG("user", "] UserPatcher::registerPatches %s", result ? "true" : "false");
 	return result;
 }
