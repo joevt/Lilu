@@ -443,9 +443,16 @@ public:
 		auto vt = obj ? reinterpret_cast<T **>(obj)[0] : nullptr;
 		if (vt) {
 			// Do not try to replace twice!
-			if (vt[off] == func)
+			if (vt[off] == func) {
+				//This happens often - for example, all IOFramebuffer of the same GPU use the same vtable
+				//DBGLOG("patcher", "virtual function %d already set to %llx", (int)off, (UInt64)func);
 				return false;
-			if (orgFunc) *orgFunc = vt[off];
+			}
+			if (orgFunc) {
+				//DBGLOG("patcher", "org function %d = %llx", (int)off, (UInt64)vt[off]);
+				*orgFunc = vt[off];
+			}
+			//DBGLOG("patcher", "function %d = %llx", (int)off, (UInt64)func);
 			vt[off] = func;
 			return true;
 		}
