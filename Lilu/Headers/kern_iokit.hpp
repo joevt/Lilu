@@ -204,17 +204,43 @@ namespace WIOKit {
 	/**
 	 *  Fixed offsets for PCI Config I/O virtual methods
 	 */
-	struct PCIConfigOffset {
+	struct IOPCIDevice_vtableIndex {
 		enum : size_t {
-			ConfigRead32      = 0x10A,
-			ConfigWrite32     = 0x10B,
-			ConfigRead16      = 0x10C,
-			ConfigWrite16     = 0x10D,
-			ConfigRead8       = 0x10E,
-			ConfigWrite8      = 0x10F,
-			GetBusNumber      = 0x11D,
-			GetDeviceNumber   = 0x11E,
-			GetFunctionNumber = 0x11F
+			ConfigRead32 = 0x10A, // patched
+			ConfigWrite32, // patched
+			ConfigRead16, // patched
+			ConfigWrite16, // patched
+			ConfigRead8, // patched
+			ConfigWrite8, // patched
+			ConfigRead32_2,
+			ConfigRead16_2,
+			ConfigRead8_2,
+			ConfigWrite32_2,
+			ConfigWrite16_2,
+			ConfigWrite8_2,
+			SaveDeviceState,
+			RestoreDeviceState,
+			SetConfigBit,
+			SetMemoryEnable,
+			SetIOEnable,
+			SetBusMasterEnable,
+			FindPCICapability,
+			GetBusNumber, // patched
+			GetDeviceNumber, // patched
+			GetFunctionNumber, // patched
+			GetDeviceMemoryWithRegister,
+			MapDeviceMemoryWithRegister,
+			IoDeviceMemory,
+			IoWrite32,
+			IoWrite16,
+			IoWrite8,
+			IoRead32,
+			IoRead16,
+			IoRead8,
+			HasPCIPowerManagement,
+			EnablePCIPowerManagement,
+			ExtendedFindPCICapability,
+			ConfigureInterrupts
 		};
 	};
 
