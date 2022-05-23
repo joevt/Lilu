@@ -22,15 +22,21 @@ void lilu_os_log(const char *format, ...) {
 	tmp[0] = '\0';
 	va_list va;
 	va_start(va, format);
-	vsnprintf(tmp, sizeof(tmp), format, va);
+	// can't use vscnprintf for El Capitan installer or Sierra installer or Mojave Installer or El Capitan or Sierra or older High Sierra
+	size_t len = vsnprintf(tmp, sizeof(tmp), format, va);
+	if (len > sizeof(tmp)) len = sizeof(tmp);
 	va_end(va);
 
-	if (lilu_get_interrupts_enabled())
-		IOLog("%s", tmp);
+	if (lilu_get_interrupts_enabled()) {
+		char *end = tmp + len;
+		for (char *part = tmp; part <= end; part += 254) {
+			IOLog("%.254s", part);
+		}
+		//kprintf("#%s\n", tmp);
+	}
 
 #ifdef DEBUG
 	if (ADDPR(config).debugLock && ADDPR(config).debugBuffer) {
-		size_t len = strlen(tmp);
 		if (len > 0) {
 			IOSimpleLockLock(ADDPR(config).debugLock);
 			size_t current = ADDPR(config).debugBufferLength;
