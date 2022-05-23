@@ -277,6 +277,7 @@ void Configuration::initCustomDebugSupport() {
 }
 
 void Configuration::saveCustomDebugOnDisk(thread_call_param_t, thread_call_param_t) {
+	UserPatcher::dumpCounters();
 	if (ADDPR(config).debugLock && ADDPR(config).debugBuffer) {
 		auto logBuf = Buffer::create<uint8_t>(MaxDebugBufferSize);
 		if (logBuf) {

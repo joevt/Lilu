@@ -248,6 +248,11 @@ public:
 	 */
 	EXPORT static bool matchSharedCachePath(const char *path);
 
+	/**
+	 *  Dump debug counters
+	 */
+	EXPORT static void dumpCounters();
+
 private:
 
 	/**
@@ -314,8 +319,9 @@ private:
 	 *  @param data_ptr  pages in kernel memory
 	 *  @param data_size data size divisible by PAGE_SIZE
 	 *  @param vp vnode that the pages belong to
+	 *  @param page_offset offset
 	 */
-	void performPagePatch(const void *data_ptr, size_t data_size, vnode_t vp);
+	void performPagePatch(const void *data_ptr, size_t data_size, vnode_t vp, memory_object_offset_t page_offset);
 
 	/**
 	 * dyld shared cache map entry structure
