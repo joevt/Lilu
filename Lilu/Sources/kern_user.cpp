@@ -1754,6 +1754,9 @@ const char *UserPatcher::getSharedCachePath() {
 }
 
 bool UserPatcher::matchSharedCachePath(const char *path) {
+	#ifdef DEBUG
+	const char *pathstart = path;
+	#endif
 	if (getKernelVersion() >= KernelVersion::BigSur) {
 		auto dyld_path = getKernelVersion() >= KernelVersion::Ventura ? venturaSharedCacheLegacy : bigSurSharedCacheLegacy;
 		auto len = strlen(dyld_path);
@@ -1782,5 +1785,10 @@ bool UserPatcher::matchSharedCachePath(const char *path) {
 	}
 
 
-	return path[0] == '\0';
+	if (path[0] == '\0') {
+		return true;
+	}
+
+	DBGLOG("user", "matchSharedCachePath unexpected path %s", pathstart);
+	return false;
 }
