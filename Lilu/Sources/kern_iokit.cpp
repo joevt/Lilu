@@ -55,9 +55,9 @@ namespace WIOKit {
 		if (!awaitPublishing(service))
 			return 0xffffffff;
 
-		auto read32 = reinterpret_cast<t_PCIConfigRead32 **>(service)[0][PCIConfigOffset::ConfigRead32];
-		auto read16 = reinterpret_cast<t_PCIConfigRead16 **>(service)[0][PCIConfigOffset::ConfigRead16];
-		auto read8  = reinterpret_cast<t_PCIConfigRead8  **>(service)[0][PCIConfigOffset::ConfigRead8];
+		auto read32 = reinterpret_cast<t_PCIConfigRead32 **>(service)[0][IOPCIDevice_vtableIndex::ConfigRead32];
+		auto read16 = reinterpret_cast<t_PCIConfigRead16 **>(service)[0][IOPCIDevice_vtableIndex::ConfigRead16];
+		auto read8  = reinterpret_cast<t_PCIConfigRead8  **>(service)[0][IOPCIDevice_vtableIndex::ConfigRead8];
 
 		if (space == 0) {
 			space = getMember<uint32_t>(service, 0xA8);
@@ -132,9 +132,9 @@ namespace WIOKit {
 	}
 
 	void getDeviceAddress(IORegistryEntry *service, uint8_t &bus, uint8_t &device, uint8_t &function) {
-		auto getBus = reinterpret_cast<t_PCIGetBusNumber **>(service)[0][PCIConfigOffset::GetBusNumber];
-		auto getDevice = reinterpret_cast<t_PCIGetDeviceNumber **>(service)[0][PCIConfigOffset::GetDeviceNumber];
-		auto getFunction = reinterpret_cast<t_PCIGetFunctionNumber **>(service)[0][PCIConfigOffset::GetFunctionNumber];
+		auto getBus = reinterpret_cast<t_PCIGetBusNumber **>(service)[0][IOPCIDevice_vtableIndex::GetBusNumber];
+		auto getDevice = reinterpret_cast<t_PCIGetDeviceNumber **>(service)[0][IOPCIDevice_vtableIndex::GetDeviceNumber];
+		auto getFunction = reinterpret_cast<t_PCIGetFunctionNumber **>(service)[0][IOPCIDevice_vtableIndex::GetFunctionNumber];
 
 		bus = getBus(service);
 		device = getDevice(service);
