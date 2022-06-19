@@ -170,7 +170,8 @@ kern_return_t UserPatcher::vmProtect(vm_map_t map, vm_offset_t start, vm_size_t 
 				case KernelVersion::Mojave       : csFlagsOffset = 0x308; break;
 				case KernelVersion::Catalina     : csFlagsOffset = 0x328; break;
 				case KernelVersion::BigSur       : csFlagsOffset = 0x310; break;
-				case KernelVersion::Monterey     :                      ; break;
+				case KernelVersion::Monterey     :
+				case KernelVersion::Ventura      :                      ; break;
 			}
 			if (getKernelVersion() >= KernelVersion::Yosemite && getKernelVersion() <= KernelVersion::BigSur) {
 				// These versions have a p_cputype and p_cpusubtype at fixed offset from p_csflags
