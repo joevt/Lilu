@@ -695,6 +695,7 @@ bool KernelPatcher::findAndReplaceWithMask(void *data, size_t dataSize, const vo
 		}
 
 		// perform replacement
+		DBGLOG("patcher", "memcpy dst:0x%llX size:%d", (uint64_t)&d[dataOffset], (int)replaceSize);
 		if (replaceMask == nullptr) {
 			lilu_os_memcpy(&d[dataOffset], replace, replaceSize);
 		} else {
