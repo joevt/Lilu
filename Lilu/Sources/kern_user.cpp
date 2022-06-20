@@ -443,18 +443,24 @@ void UserPatcher::dumpCounters() {
 	dumponecounter(counterPagePatchSearchReplaceSuccess)
 }
 
-void UserPatcher::performPagePatch(const void *data_ptr, size_t data_size, vnode_t vp, memory_object_offset_t page_offset) {
-	counterPagePatch++;
+void UserPatcher::performPagePatchForSharedCacheWithoutLookupStorage(const void *data_ptr, size_t data_size, vnode_t vp, memory_object_offset_t page_offset) {
+	char path[PATH_MAX];
+	int pathlen = PATH_MAX;
 	if (vp && getKernelVersion() >= KernelVersion::BigSur) {
+		// BigSur has shared dyld cache without framework binaries.
+		// lookupStorage is not populated for patches without binaries.
+		// Therefore, we need to bypass lookupStorage to perform patches on shared dyld cache frameworks.
+		
 		counterPagePatchBigSur++;
-		char path[PATH_MAX];
-		int pathlen = PATH_MAX;
 		if (vn_getpath(vp, path, &pathlen) == 0) {
 			counterPagePatchGetPath++;
 			for (size_t i = 0; i < binaryModSize; i++) {
 				counterPagePatchModSize++;
-				if (!strcmp(binaryMod[i]->path, path) || (binaryMod[i]->startTEXT && UserPatcher::matchSharedCachePath(path))) { // startTEXT is only set for shared dyld cache
-					// TO DO: check process info
+				if ( /* !strcmp(binaryMod[i]->path, path) || */ (binaryMod[i]->startTEXT && UserPatcher::matchSharedCachePath(path))) {
+					// startTEXT is only set for shared dyld cache frameworks.
+					// For patches that are not shared dyld cache, use lookupStorage method below.
+					// TO DO: One day we'll want to be able to create lookupStorage for patches of shared dyld cache frameworks, but not today.
+					// TO DO: check process info - for example, don't do patch on CoreDisplay framework unless the process is WindowServer
 					counterPagePatchMatchPath++;
 					for (size_t p = 0; p < binaryMod[i]->count; p++) {
 						counterPagePatchPatches++;
@@ -469,9 +475,13 @@ void UserPatcher::performPagePatch(const void *data_ptr, size_t data_size, vnode
 					} // for patch
 				} // if name match
 			} // for binaryMod
-		}
-	}
+		} // if vn_getpath
+	} // if BigSur
+}
 
+void UserPatcher::performPagePatch(const void *data_ptr, size_t data_size, vnode_t vp, memory_object_offset_t page_offset) {
+	counterPagePatch++;
+	bool foundpatch = false;
 	for (size_t data_off = 0; data_off < data_size; data_off += PAGE_SIZE) {
 		size_t sz = that->lookupStorage.size();
 		size_t maybe = 0;
@@ -549,6 +559,12 @@ void UserPatcher::performPagePatch(const void *data_ptr, size_t data_size, vnode
 									default:
 										lilu_os_memcpy(patch, rpatch.replace, rpatch.size);
 								}
+								
+								char path[PATH_MAX];
+								int pathlen = PATH_MAX;
+								if (vn_getpath(vp, path, &pathlen) != 0) path[0] = '\0';
+								DBGLOG("user", "performPagePatch page:%llx page_offset:%llx patch:%d size:%d path:%s modpath:%s", (uint64_t)data_ptr, (uint64_t)page_offset, (int)ref->i, (int)rpatch.size, path, storage->mod->path);
+								foundpatch = true;
 							}
 
 							if (MachInfo::setKernelWriting(false, KernelPatcher::kernelWriteLock) == KERN_SUCCESS) {
@@ -563,6 +579,9 @@ void UserPatcher::performPagePatch(const void *data_ptr, size_t data_size, vnode
 				}
 			}
 		}
+	}
+	if (!foundpatch) {
+		performPagePatchForSharedCacheWithoutLookupStorage(data_ptr, data_size, vp, page_offset);
 	}
 }
 

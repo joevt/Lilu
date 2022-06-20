@@ -321,6 +321,7 @@ private:
 	 *  @param vp vnode that the pages belong to
 	 *  @param page_offset offset
 	 */
+	void performPagePatchForSharedCacheWithoutLookupStorage(const void *data_ptr, size_t data_size, vnode_t vp, memory_object_offset_t page_offset);
 	void performPagePatch(const void *data_ptr, size_t data_size, vnode_t vp, memory_object_offset_t page_offset);
 
 	/**
