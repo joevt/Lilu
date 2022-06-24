@@ -1645,18 +1645,12 @@ bool UserPatcher::hookMemoryAccess() {
 	DBGLOG("user", "[ UserPatcher::hookMemoryAccess");
 
 	KernelPatcher::RouteRequest pageRoute =
-		getKernelVersion() >= KernelVersion::BigSur ?
-			KernelPatcher::RouteRequest("_cs_validate_page" , codeSignValidatePageWrapperBigSur      , orgCodeSignValidatePageWrapper ) // 11
-		: getKernelVersion() >= KernelVersion::Sierra ?
-			KernelPatcher::RouteRequest("_cs_validate_range", codeSignValidateRangeWrapper           , orgCodeSignValidateRangeWrapper) // 10.12, 10.13, 10.14, 10.15 // this exists for 11 but it doesn't get used
-		: getKernelVersion() >= KernelVersion::Yosemite ?
-			KernelPatcher::RouteRequest("_cs_validate_page" , codeSignValidatePageWrapperYosemite    , orgCodeSignValidatePageWrapper ) // 10.10, 10.11
-		: getKernelVersion() >= KernelVersion::MountainLion ?
-			KernelPatcher::RouteRequest("_cs_validate_page" , codeSignValidatePageWrapperMountainLion, orgCodeSignValidatePageWrapper ) // 10.8, 10.9
-		: getKernelVersion() >= KernelVersion::Leopard ?
-			KernelPatcher::RouteRequest("_cs_validate_page" , codeSignValidatePageWrapperLeopard     , orgCodeSignValidatePageWrapper ) // 10.5, 10.6, 10.7
-		:
-			KernelPatcher::RouteRequest(NULL, NULL);
+		/**/ getKernelVersion() >= KernelVersion::BigSur       ? KernelPatcher::RouteRequest("_cs_validate_page" , codeSignValidatePageWrapperBigSur      , orgCodeSignValidatePageWrapper ) // 11
+		:    getKernelVersion() >= KernelVersion::Sierra       ? KernelPatcher::RouteRequest("_cs_validate_range", codeSignValidateRangeWrapper           , orgCodeSignValidateRangeWrapper) // 10.12, 10.13, 10.14, 10.15 // this exists for 11 but it doesn't get used
+		:    getKernelVersion() >= KernelVersion::Yosemite     ? KernelPatcher::RouteRequest("_cs_validate_page" , codeSignValidatePageWrapperYosemite    , orgCodeSignValidatePageWrapper ) // 10.10, 10.11
+		:    getKernelVersion() >= KernelVersion::MountainLion ? KernelPatcher::RouteRequest("_cs_validate_page" , codeSignValidatePageWrapperMountainLion, orgCodeSignValidatePageWrapper ) // 10.8, 10.9
+		:    getKernelVersion() >= KernelVersion::Leopard      ? KernelPatcher::RouteRequest("_cs_validate_page" , codeSignValidatePageWrapperLeopard     , orgCodeSignValidatePageWrapper ) // 10.5, 10.6, 10.7
+		:                                                        KernelPatcher::RouteRequest(NULL, NULL);
 	if (pageRoute.symbol && !patcher->routeMultipleLong(KernelPatcher::KernelID, &pageRoute, 1)) {
 		SYSLOG("user", "failed to resolve _cs_validate function");
 		DBGLOG("user", "] UserPatcher::hookMemoryAccess false");
@@ -1716,16 +1710,11 @@ bool UserPatcher::hookMemoryAccess() {
 	if (patchDyldSharedCache) {
 
 		KernelPatcher::RouteRequest mapRoute =
-			getKernelVersion() >= KernelVersion::BigSur ?
-				KernelPatcher::RouteRequest("_vm_shared_region_map_file", vmSharedRegionMapFileBigSur   , orgVmSharedRegionMapFile) // 11
-			: getKernelVersion() >= KernelVersion::Mavericks ?
-				KernelPatcher::RouteRequest("_vm_shared_region_map_file", vmSharedRegionMapFileMavericks, orgVmSharedRegionMapFile) // 10.9, 10.10, 10.11, 10.12, 10.13, 10.14, 10.15
-			: getKernelVersion() >= KernelVersion::Lion ?
-				KernelPatcher::RouteRequest("_vm_shared_region_map_file", vmSharedRegionMapFileLion     , orgVmSharedRegionMapFile) // 10.7, 10.8
-			: getKernelVersion() >= KernelVersion::Leopard ?
-				KernelPatcher::RouteRequest("_vm_shared_region_map_file", vmSharedRegionMapFileLeopard  , orgVmSharedRegionMapFile) // 10.5, 10.6
-			:
-				KernelPatcher::RouteRequest(NULL, NULL);
+			/**/ getKernelVersion() >= KernelVersion::BigSur    ? KernelPatcher::RouteRequest("_vm_shared_region_map_file", vmSharedRegionMapFileBigSur   , orgVmSharedRegionMapFile) // 11
+			:    getKernelVersion() >= KernelVersion::Mavericks ? KernelPatcher::RouteRequest("_vm_shared_region_map_file", vmSharedRegionMapFileMavericks, orgVmSharedRegionMapFile) // 10.9, 10.10, 10.11, 10.12, 10.13, 10.14, 10.15
+			:    getKernelVersion() >= KernelVersion::Lion      ? KernelPatcher::RouteRequest("_vm_shared_region_map_file", vmSharedRegionMapFileLion     , orgVmSharedRegionMapFile) // 10.7, 10.8
+			:    getKernelVersion() >= KernelVersion::Leopard   ? KernelPatcher::RouteRequest("_vm_shared_region_map_file", vmSharedRegionMapFileLeopard  , orgVmSharedRegionMapFile) // 10.5, 10.6
+			:                                                     KernelPatcher::RouteRequest(NULL, NULL);
 		if (mapRoute.symbol && !patcher->routeMultipleLong(KernelPatcher::KernelID, &mapRoute, 1)) {
 			SYSLOG("user", "failed to hook _vm_shared_region_map_file");
 			DBGLOG("user", "] UserPatcher::hookMemoryAccess false");
@@ -1733,16 +1722,11 @@ bool UserPatcher::hookMemoryAccess() {
 		}
 
 		KernelPatcher::RouteRequest sharedRegionRoute =
-			getKernelVersion() >= KernelVersion::BigSur ?
-				KernelPatcher::RouteRequest("_vm_shared_region_slide", vmSharedRegionSlideBigSur   , orgVmSharedRegionSlide) // 11
-			: getKernelVersion() >= KernelVersion::Mojave ?
-				KernelPatcher::RouteRequest("_vm_shared_region_slide", vmSharedRegionSlideMojave   , orgVmSharedRegionSlide) // 10.14, 10.15
-			: getKernelVersion() >= KernelVersion::Mavericks ?
-				KernelPatcher::RouteRequest("_vm_shared_region_slide", vmSharedRegionSlideMavericks, orgVmSharedRegionSlide) // 10.9, 10.10, 10.11, 10.12, 10.13
-			: getKernelVersion() >= KernelVersion::Lion ?
-				KernelPatcher::RouteRequest("_vm_shared_region_slide", vmSharedRegionSlideLion     , orgVmSharedRegionSlide) // 10.7, 10.8
-			:
-				KernelPatcher::RouteRequest(NULL, NULL);
+			/**/ getKernelVersion() >= KernelVersion::BigSur    ? KernelPatcher::RouteRequest("_vm_shared_region_slide", vmSharedRegionSlideBigSur   , orgVmSharedRegionSlide) // 11
+			:    getKernelVersion() >= KernelVersion::Mojave    ? KernelPatcher::RouteRequest("_vm_shared_region_slide", vmSharedRegionSlideMojave   , orgVmSharedRegionSlide) // 10.14, 10.15
+			:    getKernelVersion() >= KernelVersion::Mavericks ? KernelPatcher::RouteRequest("_vm_shared_region_slide", vmSharedRegionSlideMavericks, orgVmSharedRegionSlide) // 10.9, 10.10, 10.11, 10.12, 10.13
+			:    getKernelVersion() >= KernelVersion::Lion      ? KernelPatcher::RouteRequest("_vm_shared_region_slide", vmSharedRegionSlideLion     , orgVmSharedRegionSlide) // 10.7, 10.8
+			:                                                     KernelPatcher::RouteRequest(NULL, NULL);
 		if (sharedRegionRoute.symbol && !patcher->routeMultipleLong(KernelPatcher::KernelID, &sharedRegionRoute, 1)) {
 			SYSLOG("user", "failed to hook _vm_shared_region_slide");
 			DBGLOG("user", "] UserPatcher::hookMemoryAccess false");
