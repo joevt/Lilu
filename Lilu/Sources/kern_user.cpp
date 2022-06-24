@@ -422,14 +422,17 @@ void UserPatcher::deinit() {
 	DBGLOG("user", "] UserPatcher::deinit");
 }
 
+static int counter_cs_validate_page = 0;
+static int counter_cs_validate_page_true = 0;
 static int counterPagePatch = 0;
-static int counterPagePatchBigSur = 0;
-static int counterPagePatchGetPath = 0;
-static int counterPagePatchModSize = 0;
-static int counterPagePatchMatchPath = 0;
-static int counterPagePatchPatches = 0;
-static int counterPagePatchPatchesEnabled = 0;
-static int counterPagePatchSearchReplaceSuccess = 0;
+static int counterPagePatchReplaceSuccess = 0;
+static int counterPagePatchWithoutLookupStorageBigSur = 0;
+static int counterPagePatchWithoutLookupStorageGetPath = 0;
+static int counterPagePatchWithoutLookupStorageModSize = 0;
+static int counterPagePatchWithoutLookupStorageMatchPath = 0;
+static int counterPagePatchWithoutLookupStoragePatches = 0;
+static int counterPagePatchWithoutLookupStoragePatchesEnabled = 0;
+static int counterPagePatchWithoutLookupStorageSearchReplaceSuccess = 0;
 static int counter_vm_page_validate_cs_mapped = 0;
 static int counter_vm_page_validate_cs_mapped_slow = 0;
 
@@ -437,14 +440,17 @@ void UserPatcher::dumpCounters() {
 #define dumponecounter(a) DBGLOG("user", #a " = %d", a);
 	dumponecounter(counter_vm_page_validate_cs_mapped)
 	dumponecounter(counter_vm_page_validate_cs_mapped_slow)
+	dumponecounter(counter_cs_validate_page)
+	dumponecounter(counter_cs_validate_page_true)
 	dumponecounter(counterPagePatch)
-	dumponecounter(counterPagePatchBigSur)
-	dumponecounter(counterPagePatchGetPath)
-	dumponecounter(counterPagePatchModSize)
-	dumponecounter(counterPagePatchMatchPath)
-	dumponecounter(counterPagePatchPatches)
-	dumponecounter(counterPagePatchPatchesEnabled)
-	dumponecounter(counterPagePatchSearchReplaceSuccess)
+	dumponecounter(counterPagePatchReplaceSuccess)
+	dumponecounter(counterPagePatchWithoutLookupStorageBigSur)
+	dumponecounter(counterPagePatchWithoutLookupStorageGetPath)
+	dumponecounter(counterPagePatchWithoutLookupStorageModSize)
+	dumponecounter(counterPagePatchWithoutLookupStorageMatchPath)
+	dumponecounter(counterPagePatchWithoutLookupStoragePatches)
+	dumponecounter(counterPagePatchWithoutLookupStoragePatchesEnabled)
+	dumponecounter(counterPagePatchWithoutLookupStorageSearchReplaceSuccess)
 }
 
 void UserPatcher::performPagePatchForSharedCacheWithoutLookupStorage(const void *data_ptr, size_t data_size, vnode_t vp, memory_object_offset_t page_offset) {
@@ -455,24 +461,24 @@ void UserPatcher::performPagePatchForSharedCacheWithoutLookupStorage(const void 
 		// lookupStorage is not populated for patches without binaries.
 		// Therefore, we need to bypass lookupStorage to perform patches on shared dyld cache frameworks.
 		
-		counterPagePatchBigSur++;
+		counterPagePatchWithoutLookupStorageBigSur++;
 		if (vn_getpath(vp, path, &pathlen) == 0) {
-			counterPagePatchGetPath++;
+			counterPagePatchWithoutLookupStorageGetPath++;
 			for (size_t i = 0; i < binaryModSize; i++) {
-				counterPagePatchModSize++;
+				counterPagePatchWithoutLookupStorageModSize++;
 				if ( /* !strcmp(binaryMod[i]->path, path) || */ (binaryMod[i]->startTEXT && UserPatcher::matchSharedCachePath(path))) {
 					// startTEXT is only set for shared dyld cache frameworks.
 					// For patches that are not shared dyld cache, use lookupStorage method below.
 					// TO DO: One day we'll want to be able to create lookupStorage for patches of shared dyld cache frameworks, but not today.
 					// TO DO: check process info - for example, don't do patch on CoreDisplay framework unless the process is WindowServer
-					counterPagePatchMatchPath++;
+					counterPagePatchWithoutLookupStorageMatchPath++;
 					for (size_t p = 0; p < binaryMod[i]->count; p++) {
-						counterPagePatchPatches++;
+						counterPagePatchWithoutLookupStoragePatches++;
 						if (binaryMod[i]->patches[p].section != ProcInfo::SectionDisabled) {
-							counterPagePatchPatchesEnabled++;
+							counterPagePatchWithoutLookupStoragePatchesEnabled++;
 							// TO DO: check cpu, flags, skip, count, segment
 							if (UNLIKELY(KernelPatcher::findAndReplace(const_cast<void *>(data_ptr), data_size, binaryMod[i]->patches[p].find, binaryMod[i]->patches[p].size, binaryMod[i]->patches[p].replace, binaryMod[i]->patches[p].size))) {
-								counterPagePatchSearchReplaceSuccess++;
+								counterPagePatchWithoutLookupStorageSearchReplaceSuccess++;
 								DBGLOG("user", "performPagePatch page:%llx page_offset:%llx mod:%d patch:%d size:%d path:%s modpath:%s", (uint64_t)data_ptr, (uint64_t)page_offset, (int)i, (int)p, (int)binaryMod[i]->patches[p].size, path, binaryMod[i]->path);
 							}
 						}
@@ -569,6 +575,7 @@ void UserPatcher::performPagePatch(const void *data_ptr, size_t data_size, vnode
 								if (vn_getpath(vp, path, &pathlen) != 0) path[0] = '\0';
 								DBGLOG("user", "performPagePatch page:%llx page_offset:%llx patch:%d size:%d path:%s modpath:%s", (uint64_t)data_ptr, (uint64_t)page_offset, (int)ref->i, (int)rpatch.size, path, storage->mod->path);
 								foundpatch = true;
+								counterPagePatchReplaceSuccess++;
 							}
 
 							if (MachInfo::setKernelWriting(false, KernelPatcher::kernelWriteLock) == KERN_SUCCESS) {
@@ -589,32 +596,40 @@ void UserPatcher::performPagePatch(const void *data_ptr, size_t data_size, vnode
 	}
 }
 
-boolean_t UserPatcher::codeSignValidatePageWrapperBigSur(vnode_t vp, memory_object_t pager, memory_object_offset_t page_offset, const void *data, int *validated_p, int *tainted_p, int *nx_p) {
-	boolean_t res = FunctionCast(codeSignValidatePageWrapperBigSur, that->orgCodeSignValidatePageWrapper)(vp, pager, page_offset, data, validated_p, tainted_p, nx_p);
-	if (res) that->performPagePatch(data, PAGE_SIZE, vp, page_offset);
-	return res;
+void UserPatcher::codeSignValidatePageWrapperBigSur(vnode_t vp, memory_object_t pager, memory_object_offset_t page_offset, const void *data, int *validated_p, int *tainted_p, int *nx_p) {
+	counter_cs_validate_page++;
+	FunctionCast(codeSignValidatePageWrapperBigSur, that->orgCodeSignValidatePageWrapper)(vp, pager, page_offset, data, validated_p, tainted_p, nx_p);
+	that->performPagePatch(data, PAGE_SIZE, vp, page_offset);
 }
 
 boolean_t UserPatcher::codeSignValidatePageWrapperYosemite(void *blobs, memory_object_t pager, memory_object_offset_t page_offset, const void *data, unsigned *tainted) {
+	counter_cs_validate_page++;
 	boolean_t res = FunctionCast(codeSignValidatePageWrapperYosemite, that->orgCodeSignValidatePageWrapper)(blobs, pager, page_offset, data, tainted);
+	if (res) counter_cs_validate_page_true++;
 	if (res) that->performPagePatch(data, PAGE_SIZE, NULL, page_offset);
 	return res;
 }
 
 boolean_t UserPatcher::codeSignValidatePageWrapperMountainLion(void *blobs, memory_object_t pager, memory_object_offset_t page_offset, const void *data, boolean_t *tainted) {
+	counter_cs_validate_page++;
 	boolean_t res = FunctionCast(codeSignValidatePageWrapperMountainLion, that->orgCodeSignValidatePageWrapper)(blobs, pager, page_offset, data, tainted);
+	if (res) counter_cs_validate_page_true++;
 	if (res) that->performPagePatch(data, PAGE_SIZE, NULL, page_offset);
 	return res;
 }
 
 boolean_t UserPatcher::codeSignValidatePageWrapperLeopard(void *blobs, memory_object_offset_t page_offset, const void *data, boolean_t *tainted) {
+	counter_cs_validate_page++;
 	boolean_t res = FunctionCast(codeSignValidatePageWrapperLeopard, that->orgCodeSignValidatePageWrapper)(blobs, page_offset, data, tainted);
+	if (res) counter_cs_validate_page_true++;
 	if (res) that->performPagePatch(data, PAGE_SIZE, NULL, page_offset);
 	return res;
 }
 
 boolean_t UserPatcher::codeSignValidateRangeWrapper(vnode_t vp, memory_object_t pager, memory_object_offset_t range_offset, const void *data, memory_object_size_t data_size, unsigned *tainted) {
+	counter_cs_validate_page++;
 	boolean_t res = FunctionCast(codeSignValidateRangeWrapper, that->orgCodeSignValidateRangeWrapper)(vp, pager, range_offset, data, data_size, tainted);
+	if (res) counter_cs_validate_page_true++;
 	if (res) that->performPagePatch(data, (size_t)data_size, vp, range_offset);
 	return res;
 }
