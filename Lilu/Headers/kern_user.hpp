@@ -298,7 +298,7 @@ private:
 	 *  Kernel function wrappers
 	 */
 	static boolean_t codeSignValidateRangeWrapper           (vnode_t vp , memory_object_t pager, memory_object_offset_t range_offset, const void *data, memory_object_size_t data_size, unsigned *tainted);
-	static boolean_t codeSignValidatePageWrapperBigSur      (vnode_t vp , memory_object_t pager, memory_object_offset_t page_offset , const void *data, int *validated_p,                    int *tainted_p, int *nx_p);
+	static void      codeSignValidatePageWrapperBigSur      (vnode_t vp , memory_object_t pager, memory_object_offset_t page_offset , const void *data, int *validated_p,                    int *tainted_p, int *nx_p);
 	static boolean_t codeSignValidatePageWrapperYosemite    (void *blobs, memory_object_t pager, memory_object_offset_t page_offset , const void *data,                                 unsigned *tainted);
 	static boolean_t codeSignValidatePageWrapperMountainLion(void *blobs, memory_object_t pager, memory_object_offset_t page_offset , const void *data,                                boolean_t *tainted);
 	static boolean_t codeSignValidatePageWrapperLeopard     (void *blobs,                        memory_object_offset_t page_offset , const void *data,                                boolean_t *tainted);
