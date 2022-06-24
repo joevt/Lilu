@@ -262,14 +262,14 @@ private:
 	using vm_shared_region_t = void *;
 	using shared_file_mapping_np = void *;
 	using sr_file_mappings = void *;
-	using t_currentMap = vm_map_t (*)(void);
-	using t_getTaskMap = vm_map_t (*)(task_t);
-	using t_getMapMin = vm_map_offset_t (*)(vm_map_t);
-	using t_vmMapSwitchProtect = void (*)(vm_map_t, boolean_t);
-	using t_vmMapCheckProtection = boolean_t (*)(vm_map_t, vm_map_offset_t, vm_map_offset_t, vm_prot_t);
-	using t_vmMapReadUser = kern_return_t (*)(vm_map_t, vm_map_address_t, const void *, vm_size_t);
-	using t_vmMapWriteUser = kern_return_t (*)(vm_map_t, const void *, vm_map_address_t, vm_size_t);
-	using t_vmMapLookupEntry = boolean_t (*)(vm_map_t map, vm_map_address_t address, vm_map_entry_t *entry);
+	using t_current_map = vm_map_t (*)(void);
+	using t_get_task_map = vm_map_t (*)(task_t);
+	using t_get_map_min = vm_map_offset_t (*)(vm_map_t);
+	using t_vm_map_switch_protect = void (*)(vm_map_t, boolean_t);
+	using t_vm_map_check_protection = boolean_t (*)(vm_map_t, vm_map_offset_t, vm_map_offset_t, vm_prot_t);
+	using t_vm_map_read_user = kern_return_t (*)(vm_map_t, vm_map_address_t, const void *, vm_size_t);
+	using t_vm_map_write_user = kern_return_t (*)(vm_map_t, const void *, vm_map_address_t, vm_size_t);
+	using t_vm_map_lookup_entry = boolean_t (*)(vm_map_t map, vm_map_address_t address, vm_map_entry_t *entry);
 
 	/**
 	 *  Original kernel function trampolines
@@ -278,15 +278,15 @@ private:
 	mach_vm_address_t orgCodeSignValidateRangeWrapper {};
 	mach_vm_address_t orgVmSharedRegionMapFile {};
 	mach_vm_address_t orgVmSharedRegionSlide {};
-	t_currentMap orgCurrentMap {nullptr};
-	t_getMapMin orgGetMapMin {nullptr};
-	t_getTaskMap orgGetTaskMap {nullptr};
-	t_vmMapSwitchProtect orgVmMapSwitchProtect {nullptr};
-	t_vmMapCheckProtection orgVmMapCheckProtection {nullptr};
-	t_vmMapReadUser orgVmMapReadUser {nullptr};
-	t_vmMapWriteUser orgVmMapWriteUser {nullptr};
 	mach_vm_address_t orgTaskSetMainThreadQos {};
-	t_vmMapLookupEntry orgVmMapLookupEntry {nullptr};
+	t_current_map org_current_map {nullptr};
+	t_get_map_min org_get_map_min {nullptr};
+	t_get_task_map org_get_task_map {nullptr};
+	t_vm_map_switch_protect org_vm_map_switch_protect {nullptr};
+	t_vm_map_check_protection org_vm_map_check_protection {nullptr};
+	t_vm_map_read_user org_vm_map_read_user {nullptr};
+	t_vm_map_write_user org_vm_map_write_user {nullptr};
+	t_vm_map_lookup_entry org_vm_map_lookup_entry {nullptr};
 
 	/**
 	 *  Kernel function wrappers

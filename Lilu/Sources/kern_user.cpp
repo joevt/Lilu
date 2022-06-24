@@ -266,8 +266,8 @@ kern_return_t UserPatcher::vmProtect(vm_map_t map, vm_offset_t start, vm_size_t 
 				// in the future.
 				*flags |= CS_DEBUGGED;
 				dump_csFlags(*flags);
-				if (that->orgVmMapSwitchProtect) {
-					DBGLOG("user", "calling orgVmMapSwitchProtect");
+				if (that->org_vm_map_switch_protect) {
+					DBGLOG("user", "calling org_vm_map_switch_protect");
 					size_t taskOffset =
 						getKernelVersion() >= KernelVersion::Mojave      ? 0x10 :
 #if defined(__i386__)
@@ -276,10 +276,10 @@ kern_return_t UserPatcher::vmProtect(vm_map_t map, vm_offset_t start, vm_size_t 
 #endif
 						0x0c;
 
-					that->orgVmMapSwitchProtect(that->orgGetTaskMap(getMember<task_t>(currproc, taskOffset)), false);
+					that->org_vm_map_switch_protect(that->org_get_task_map(getMember<task_t>(currproc, taskOffset)), false);
 				}
 				else {
-					DBGLOG("user", "not calling orgVmMapSwitchProtect");
+					DBGLOG("user", "not calling org_vm_map_switch_protect");
 				}
 			}
 		}
@@ -656,7 +656,7 @@ void UserPatcher::onPath(const char *path, uint32_t len) {
 						}
 
 					} else {
-						patchBinary(orgCurrentMap(), path, len);
+						patchBinary(org_current_map(), path, len);
 					}
 
 					DBGLOG("user", "] UserPatcher::onPath");
@@ -692,10 +692,10 @@ void UserPatcher::patchBinary(vm_map_t map, const char *path, uint32_t len) {
 }
 
 bool UserPatcher::getTaskHeader(vm_map_t taskPort, mach_header_64 &header) {
-	auto baseAddr = orgGetMapMin(taskPort);
+	auto baseAddr = org_get_map_min(taskPort);
 	DBGLOG("user", "getTaskHeader map min is " PRIKADDR, CASTKADDR(baseAddr));
 
-	kern_return_t err = orgVmMapReadUser(taskPort, baseAddr, &header, sizeof(mach_header_64));
+	kern_return_t err = org_vm_map_read_user(taskPort, baseAddr, &header, sizeof(mach_header_64));
 	if (err == KERN_SUCCESS)
 		return true;
 
@@ -706,12 +706,12 @@ bool UserPatcher::getTaskHeader(vm_map_t taskPort, mach_header_64 &header) {
 bool UserPatcher::injectRestrict(vm_map_t taskPort) {
 	DBGLOG("user", "[ UserPatcher::injectRestrict");
 	// Get task's mach-o header and determine its cpu type
-	auto baseAddr = orgGetMapMin(taskPort);
+	auto baseAddr = org_get_map_min(taskPort);
 
 	DBGLOG("user", "injectRestrict map min is " PRIKADDR, CASTKADDR(baseAddr));
 
 	auto &tmpHeader = *reinterpret_cast<mach_header_64 *>(tmpBufferData);
-	kern_return_t err = orgVmMapReadUser(taskPort, baseAddr, &tmpHeader, sizeof(mach_header_64));
+	kern_return_t err = org_vm_map_read_user(taskPort, baseAddr, &tmpHeader, sizeof(mach_header_64));
 
 	if (err == KERN_SUCCESS){
 		if (tmpHeader.magic == MH_MAGIC_64 || tmpHeader.magic == MH_MAGIC) {
@@ -761,7 +761,7 @@ bool UserPatcher::injectRestrict(vm_map_t taskPort) {
 
 			// Write new number and size of commands
 			DBGLOG("user", "write new number and size of commands");
-			auto res = orgVmMapWriteUser(taskPort, &newCombVal, ncmdsAddr, sizeof(uint64_t));
+			auto res = org_vm_map_write_user(taskPort, &newCombVal, ncmdsAddr, sizeof(uint64_t));
 			if (res != KERN_SUCCESS) {
 				SYSLOG("user", "failed to change mach header (%d)", res);
 #if 0 // test_* is currently only for BigSur 11.6.4
@@ -778,10 +778,10 @@ bool UserPatcher::injectRestrict(vm_map_t taskPort) {
 			DBGLOG("user", "write the load command");
 			// Write the load command
 			auto restrSegment = tmpHeader.magic == MH_MAGIC ? static_cast<void *>(&restrictSegment32) : static_cast<void *>(&restrictSegment64);
-			res = orgVmMapWriteUser(taskPort, restrSegment, newCmdAddr, restrSize);
+			res = org_vm_map_write_user(taskPort, restrSegment, newCmdAddr, restrSize);
 			if (res != KERN_SUCCESS) {
 				SYSLOG("user", "failed to add dylib load command (%d), reverting...", res);
-				res = orgVmMapWriteUser(taskPort, &orgCombVal, ncmdsAddr, sizeof(uint64_t));
+				res = org_vm_map_write_user(taskPort, &orgCombVal, ncmdsAddr, sizeof(uint64_t));
 				if (res != KERN_SUCCESS) {
 					SYSLOG("user", "failed to restore mach header (%d), this process will crash...", res);
 				}
@@ -825,7 +825,7 @@ vm_address_t UserPatcher::injectSegment(vm_map_t taskPort, vm_address_t addr, ui
 	auto writeProt = prot|VM_PROT_READ|VM_PROT_WRITE;
 	ret = vmProtect(taskPort, addr, size, FALSE, writeProt);
 	if (ret == KERN_SUCCESS) {
-		ret = orgVmMapWriteUser(taskPort, payload, addr, size);
+		ret = org_vm_map_write_user(taskPort, payload, addr, size);
 		if (ret == KERN_SUCCESS) {
 			if (writeProt != prot)
 				ret = vmProtect(taskPort, addr, size, FALSE, prot);
@@ -850,10 +850,10 @@ bool UserPatcher::injectPayload(vm_map_t taskPort, uint8_t *payload, size_t size
 	}
 
 	// Get task's mach-o header and determine its cpu type
-	auto baseAddr = orgGetMapMin(taskPort);
+	auto baseAddr = org_get_map_min(taskPort);
 	DBGLOG("user", "injectPayload map min is " PRIKADDR, CASTKADDR(baseAddr));
 
-	kern_return_t err = orgVmMapReadUser(taskPort, baseAddr, tmpBufferData, sizeof(tmpBufferData));
+	kern_return_t err = org_vm_map_read_user(taskPort, baseAddr, tmpBufferData, sizeof(tmpBufferData));
 	auto machHeader = reinterpret_cast<mach_header_64 *>(tmpBufferData);
 	if (err == KERN_SUCCESS){
 		if (machHeader->magic == MH_MAGIC_64 || machHeader->magic == MH_MAGIC) {
@@ -935,7 +935,7 @@ bool UserPatcher::injectPayload(vm_map_t taskPort, uint8_t *payload, size_t size
 
 			// Write new ep
 			lilu_os_memcpy(tmpBufferData + newEp, payload, size);
-			auto res = orgVmMapWriteUser(taskPort, tmpBufferData, baseAddr, sizeof(tmpBufferData));
+			auto res = org_vm_map_write_user(taskPort, tmpBufferData, baseAddr, sizeof(tmpBufferData));
 			if (res != KERN_SUCCESS) {
 				SYSLOG("user", "failed to chage ep (%d)", res);
 				return false;
@@ -966,7 +966,7 @@ bool UserPatcher::injectPayload(vm_map_t taskPort, uint8_t *payload, size_t size
 kern_return_t UserPatcher::vmSharedRegionMapFileBigSur(vm_shared_region_t shared_region, int sr_mappings_count, sr_file_mappings *sr_mappings) {
 	DBGLOG("user", "[ UserPatcher::vmSharedRegionMapFileBigSur");
 	auto res = FunctionCast(vmSharedRegionMapFileBigSur, that->orgVmSharedRegionMapFile)(shared_region, sr_mappings_count, sr_mappings);
-	//that->patchSharedCache(that->orgCurrentMap(), 0, CPU_TYPE_X86_64);
+	//that->patchSharedCache(that->org_current_map(), 0, CPU_TYPE_X86_64);
 	DBGLOG("user", "] UserPatcher::vmSharedRegionMapFileBigSur result:%d", res);
 	return res;
 }
@@ -975,7 +975,7 @@ kern_return_t UserPatcher::vmSharedRegionMapFileMavericks(vm_shared_region_t sha
 	DBGLOG("user", "[ UserPatcher::vmSharedRegionMapFileMavericks slide:%X", slide);
 	auto res = FunctionCast(vmSharedRegionMapFileMavericks, that->orgVmSharedRegionMapFile)(shared_region, mappings_count, mappings, file_control, file_size, root_dir, slide, slide_start, slide_size);
 	if (!slide) {
-		that->patchSharedCache(that->orgCurrentMap(), 0, CPU_TYPE_X86_64);
+		that->patchSharedCache(that->org_current_map(), 0, CPU_TYPE_X86_64);
 	}
 	DBGLOG("user", "] UserPatcher::vmSharedRegionMapFileMavericks result:%d", res);
 	return res;
@@ -984,7 +984,7 @@ kern_return_t UserPatcher::vmSharedRegionMapFileMavericks(vm_shared_region_t sha
 kern_return_t UserPatcher::vmSharedRegionMapFileLion(vm_shared_region_t shared_region, unsigned int mappings_count, shared_file_mapping_np *mappings, memory_object_control_t file_control, memory_object_size_t file_size, void *root_dir, shared_file_mapping_np *mapping_to_slide) {
 	DBGLOG("user", "[ UserPatcher::vmSharedRegionMapFileLion");
 	auto res = FunctionCast(vmSharedRegionMapFileLion, that->orgVmSharedRegionMapFile)(shared_region, mappings_count, mappings, file_control, file_size, root_dir, mapping_to_slide);
-	//that->patchSharedCache(that->orgCurrentMap(), 0, CPU_TYPE_X86_64);
+	//that->patchSharedCache(that->org_current_map(), 0, CPU_TYPE_X86_64);
 	DBGLOG("user", "] UserPatcher::vmSharedRegionMapFileLion result:%d", res);
 	return res;
 }
@@ -992,14 +992,14 @@ kern_return_t UserPatcher::vmSharedRegionMapFileLion(vm_shared_region_t shared_r
 kern_return_t UserPatcher::vmSharedRegionMapFileLeopard(vm_shared_region_t shared_region, unsigned int mappings_count, shared_file_mapping_np *mappings, memory_object_control_t file_control, memory_object_size_t file_size, void *root_dir) {
 	DBGLOG("user", "[ UserPatcher::vmSharedRegionMapFileLeopard");
 	auto res = FunctionCast(vmSharedRegionMapFileLeopard, that->orgVmSharedRegionMapFile)(shared_region, mappings_count, mappings, file_control, file_size, root_dir);
-	//that->patchSharedCache(that->orgCurrentMap(), 0, CPU_TYPE_X86_64);
+	//that->patchSharedCache(that->org_current_map(), 0, CPU_TYPE_X86_64);
 	DBGLOG("user", "] UserPatcher::vmSharedRegionMapFileLeopard result:%d", res);
 	return res;
 }
 
 int UserPatcher::vmSharedRegionSlideBigSur(uint32_t slide, mach_vm_offset_t entry_start_address, mach_vm_size_t entry_size, mach_vm_offset_t slide_start, mach_vm_size_t slide_size, mach_vm_offset_t slid_mapping, memory_object_control_t sr_file_control, vm_prot_t prot) {
 	DBGLOG("user", "[ UserPatcher::vmSharedRegionSlideBigSur slide:%X start:%llX size:%llX slide_start:%llX slide_size:%llX prot:%X", slide, entry_start_address, entry_size, slide_start, slide_size, prot);
-	that->patchSharedCache(that->orgCurrentMap(), slide, CPU_TYPE_X86_64);
+	that->patchSharedCache(that->org_current_map(), slide, CPU_TYPE_X86_64);
 	int result = FunctionCast(vmSharedRegionSlideBigSur, that->orgVmSharedRegionSlide)(slide, entry_start_address, entry_size, slide_start, slide_size, slid_mapping, sr_file_control, prot);
 	DBGLOG("user", "] UserPatcher::vmSharedRegionSlideBigSur result:%d", result);
 	return result;
@@ -1007,7 +1007,7 @@ int UserPatcher::vmSharedRegionSlideBigSur(uint32_t slide, mach_vm_offset_t entr
 
 int UserPatcher::vmSharedRegionSlideMojave(uint32_t slide, mach_vm_offset_t entry_start_address, mach_vm_size_t entry_size, mach_vm_offset_t slide_start, mach_vm_size_t slide_size, mach_vm_offset_t slid_mapping, memory_object_control_t sr_file_control) {
 	DBGLOG("user", "[ UserPatcher::vmSharedRegionSlideMojave slide:%X start:%llX size:%llX slide_start:%llX slide_size:%llX", slide, entry_start_address, entry_size, slide_start, slide_size);
-	that->patchSharedCache(that->orgCurrentMap(), slide, CPU_TYPE_X86_64);
+	that->patchSharedCache(that->org_current_map(), slide, CPU_TYPE_X86_64);
 	int result = FunctionCast(vmSharedRegionSlideMojave, that->orgVmSharedRegionSlide)(slide, entry_start_address, entry_size, slide_start, slide_size, slid_mapping, sr_file_control);
 	DBGLOG("user", "] UserPatcher::vmSharedRegionSlideMojave result:%d", result);
 	return result;
@@ -1015,7 +1015,7 @@ int UserPatcher::vmSharedRegionSlideMojave(uint32_t slide, mach_vm_offset_t entr
 
 int UserPatcher::vmSharedRegionSlideMavericks(uint32_t slide, mach_vm_offset_t entry_start_address, mach_vm_size_t entry_size, mach_vm_offset_t slide_start, mach_vm_size_t slide_size, memory_object_control_t sr_file_control) {
 	DBGLOG("user", "[ UserPatcher::vmSharedRegionSlideMavericks slide:%X start:%llX size:%llX slide_start:%llX slide_size:%llX", slide, entry_start_address, entry_size, slide_start, slide_size);
-	that->patchSharedCache(that->orgCurrentMap(), slide, CPU_TYPE_X86_64);
+	that->patchSharedCache(that->org_current_map(), slide, CPU_TYPE_X86_64);
 	int result = FunctionCast(vmSharedRegionSlideMavericks, that->orgVmSharedRegionSlide)(slide, entry_start_address, entry_size, slide_start, slide_size, sr_file_control);
 	DBGLOG("user", "] UserPatcher::vmSharedRegionSlideMavericks result:%d", result);
 	return result;
@@ -1023,7 +1023,7 @@ int UserPatcher::vmSharedRegionSlideMavericks(uint32_t slide, mach_vm_offset_t e
 
 kern_return_t UserPatcher::vmSharedRegionSlideLion(vm_offset_t vaddr, uint32_t pageIndex) {
 	DBGLOG("user", "[ UserPatcher::vmSharedRegionSlideLion vaddr:%lX pageIndex:%X", vaddr, pageIndex);
-	//that->patchSharedCache(that->orgCurrentMap(), slide, CPU_TYPE_X86_64);
+	//that->patchSharedCache(that->org_current_map(), slide, CPU_TYPE_X86_64);
 	kern_return_t result = FunctionCast(vmSharedRegionSlideLion, that->orgVmSharedRegionSlide)(vaddr, pageIndex);
 	DBGLOG("user", "] UserPatcher::vmSharedRegionSlideLion result:%d", result);
 	return result;
@@ -1036,7 +1036,7 @@ void UserPatcher::taskSetMainThreadQos(task_t task, thread_t main_thread) {
 	if (entry) {
 		DBGLOG("user", "[ UserPatcher::taskSetMainThreadQos");
 		DBGTRACE("user", "firing hook from task_set_main_thread_qos " PRIKADDR, CASTKADDR(current_thread()));
-		that->patchBinary(that->orgGetTaskMap(task), (*entry)->path, (*entry)->pathLen);
+		that->patchBinary(that->org_get_task_map(task), (*entry)->path, (*entry)->pathLen);
 		PANIC_COND(!that->pending.erase(), "user", "failed to remove pending user patch in task_set_main_thread_qos");
 		delete *entry;
 		DBGLOG("user", "] UserPatcher::taskSetMainThreadQos");
@@ -1084,7 +1084,7 @@ void UserPatcher::patchSharedCache(vm_map_t taskPort, uint32_t slide, cpu_type_t
 				if (tmp) {
 					for (size_t k = 0; k < offNum; k++) {
 						auto place = modStart+ref->segOffs[k]+slide;
-						auto r = orgVmMapReadUser(taskPort, place, tmp, patch.size);
+						auto r = org_vm_map_read_user(taskPort, place, tmp, patch.size);
 						if (!r) {
 							bool comparison = !memcmp(tmp, applyChanges? patch.find : patch.replace, patch.size);
 							DBGLOG("user", "%d/%d found %02X %02X %02X %02X", applyChanges, comparison, tmp[0], tmp[1], tmp[2], tmp[3]);
@@ -1093,7 +1093,7 @@ void UserPatcher::patchSharedCache(vm_map_t taskPort, uint32_t slide, cpu_type_t
 								if (r == KERN_SUCCESS) {
 									DBGLOG("user", "obtained write permssions");
 
-									r = orgVmMapWriteUser(taskPort, applyChanges ? patch.replace : patch.find, place, patch.size);
+									r = org_vm_map_write_user(taskPort, applyChanges ? patch.replace : patch.find, place, patch.size);
 
 									SYSLOG("user", "patching %llX -> result:%d", place, r);
 
@@ -1511,11 +1511,11 @@ bool UserPatcher::loadLookups() {
 
 vm_prot_t UserPatcher::getPageProtection(vm_map_t map, vm_map_address_t addr) {
 	vm_prot_t prot = VM_PROT_NONE;
-	if (orgVmMapCheckProtection(map, addr, addr+PAGE_SIZE, VM_PROT_READ))
+	if (org_vm_map_check_protection(map, addr, addr+PAGE_SIZE, VM_PROT_READ))
 		prot |= VM_PROT_READ;
-	if (orgVmMapCheckProtection(map, addr, addr+PAGE_SIZE, VM_PROT_WRITE))
+	if (org_vm_map_check_protection(map, addr, addr+PAGE_SIZE, VM_PROT_WRITE))
 		prot |= VM_PROT_WRITE;
-	if (orgVmMapCheckProtection(map, addr, addr+PAGE_SIZE, VM_PROT_EXECUTE))
+	if (org_vm_map_check_protection(map, addr, addr+PAGE_SIZE, VM_PROT_EXECUTE))
 		prot |= VM_PROT_EXECUTE;
 
 	return prot;
@@ -1586,7 +1586,7 @@ bool UserPatcher::vmSetMaxProtection(
 
 	vm_map_lock(map);
 
-	if (!orgVmMapLookupEntry(map, start, &tmp_entry)) {
+	if (!org_vm_map_lookup_entry(map, start, &tmp_entry)) {
 		DBGLOG("user", "orgVmMapLookupEntry failed");
 		vm_map_unlock(map);
 		return FALSE;
@@ -1645,68 +1645,31 @@ bool UserPatcher::hookMemoryAccess() {
 		return false;
 	}
 
-	orgCurrentMap = reinterpret_cast<t_currentMap>(patcher->solveSymbol(KernelPatcher::KernelID, "_current_map"));
-	if (patcher->getError() != KernelPatcher::Error::NoError) {
-		SYSLOG("user", "failed to resolve _current_map");
-		patcher->clearError();
-		DBGLOG("user", "] UserPatcher::hookMemoryAccess false");
-		return false;
-	}
+	#define solveone(fatal, name) \
+		org ## name = reinterpret_cast<t ## name>(patcher->solveSymbol(KernelPatcher::KernelID, # name)); \
+		if (patcher->getError() != KernelPatcher::Error::NoError) { \
+			if (fatal) { \
+				SYSLOG("user", "failed to resolve " # name); \
+				patcher->clearError(); \
+				DBGLOG("user", "] UserPatcher::hookMemoryAccess false"); \
+				return false; \
+			} \
+			else { \
+				DBGLOG("user", "failed to resolve " # name); \
+				patcher->clearError(); \
+				/* Not an error, may be missing */ \
+			} \
+		}
 
-	orgGetMapMin = reinterpret_cast<t_getMapMin>(patcher->solveSymbol(KernelPatcher::KernelID, "_get_map_min"));
-	if (patcher->getError() != KernelPatcher::Error::NoError) {
-		SYSLOG("user", "failed to resolve _get_map_min");
-		patcher->clearError();
-		DBGLOG("user", "] UserPatcher::hookMemoryAccess false");
-		return false;
-	}
-
-	orgGetTaskMap = reinterpret_cast<t_getTaskMap>(patcher->solveSymbol(KernelPatcher::KernelID, "_get_task_map"));
-	if (patcher->getError() != KernelPatcher::Error::NoError) {
-		SYSLOG("user", "failed to resolve _get_task_map");
-		patcher->clearError();
-		DBGLOG("user", "] UserPatcher::hookMemoryAccess false");
-		return false;
-	}
-
-	orgVmMapSwitchProtect = reinterpret_cast<t_vmMapSwitchProtect>(patcher->solveSymbol(KernelPatcher::KernelID, "_vm_map_switch_protect"));
-	if (patcher->getError() != KernelPatcher::Error::NoError) {
-		DBGLOG("user", "failed to resolve _vm_map_switch_protect");
-		patcher->clearError();
-		// Not an error, may be missing
-	}
-
-	orgVmMapCheckProtection = reinterpret_cast<t_vmMapCheckProtection>(patcher->solveSymbol(KernelPatcher::KernelID, "_vm_map_check_protection"));
-	if (patcher->getError() != KernelPatcher::Error::NoError) {
-		SYSLOG("user", "failed to resolve _vm_map_check_protection");
-		patcher->clearError();
-		DBGLOG("user", "] UserPatcher::hookMemoryAccess false");
-		return false;
-	}
-
-	orgVmMapReadUser = reinterpret_cast<t_vmMapReadUser>(patcher->solveSymbol(KernelPatcher::KernelID, "_vm_map_read_user"));
-	if (patcher->getError() != KernelPatcher::Error::NoError) {
-		SYSLOG("user", "failed to resolve _vm_map_read_user");
-		patcher->clearError();
-		DBGLOG("user", "] UserPatcher::hookMemoryAccess false");
-		return false;
-	}
-
-	orgVmMapWriteUser = reinterpret_cast<t_vmMapWriteUser>(patcher->solveSymbol(KernelPatcher::KernelID, "_vm_map_write_user"));
-	if (patcher->getError() != KernelPatcher::Error::NoError) {
-		SYSLOG("user", "failed to resolve _vm_map_write_user");
-		patcher->clearError();
-		DBGLOG("user", "] UserPatcher::hookMemoryAccess false");
-		return false;
-	}
-
-	orgVmMapLookupEntry = reinterpret_cast<t_vmMapLookupEntry>(patcher->solveSymbol(KernelPatcher::KernelID, "_vm_map_lookup_entry"));
-	if (patcher->getError() != KernelPatcher::Error::NoError) {
-		SYSLOG("user", "failed to resolve _vm_map_lookup_entry");
-		patcher->clearError();
-		DBGLOG("user", "] UserPatcher::hookMemoryAccess false");
-		return false;
-	}
+	solveone(1, _current_map);
+	solveone(1, _get_map_min);
+	solveone(1, _get_task_map);
+	solveone(0, _vm_map_switch_protect);
+	solveone(1, _vm_map_check_protection);
+	solveone(1, _vm_map_read_user);
+	solveone(1, _vm_map_write_user);
+	solveone(1, _vm_map_lookup_entry);
+	#undef solveone
 
 	// On 10.12.1 b4 Apple decided not to let current_map point to the current process
 	// For this reason we have to obtain the map with the other methods
