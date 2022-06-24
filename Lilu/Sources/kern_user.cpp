@@ -684,7 +684,7 @@ void UserPatcher::onPath(const char *path, uint32_t len) {
 void UserPatcher::patchBinary(vm_map_t map, const char *path, uint32_t len) {
 	DBGLOG("user", "[ UserPatcher::patchBinary path:%s", path);
 	if (patchDyldSharedCache && sharedCacheSlideStored) {
-		// note: patchSharedCache doesn't do anything if lookupStorage is empty
+		// note: patchSharedCache doesn't do anything if lookupStorage is empty or if all the lookupStorage items are not for shared cache binaries
 		patchSharedCache(map, storedSharedCacheSlide, CPU_TYPE_X86_64);
 	}
 	if (!patchDyldSharedCache || !sharedCacheSlideStored/* || !lookupStorage.size() */) {
@@ -1134,6 +1134,10 @@ void UserPatcher::patchSharedCache(vm_map_t taskPort, uint32_t slide, cpu_type_t
 					}
 					Buffer::deleter(tmp);
 				}
+			}
+			else {
+				// startTEXT is only set for shared dyld cache frameworks so this patching method doesn't apply to non-dyld shared cache patches
+				DBGLOG("user", "not patching here because modStart:%llx modEnd:%llx offNum:%llx patch.cpu:%d cpu:%d", (uint64_t)modStart, (uint64_t)modEnd, (uint64_t)offNum, patch.cpu, cpu);
 			}
 			DBGLOG("user", "] storageEntry->refs[%lld]", (uint64_t)j);
 		} // for storageEntry->refs
