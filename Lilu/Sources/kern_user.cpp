@@ -430,9 +430,13 @@ static int counterPagePatchMatchPath = 0;
 static int counterPagePatchPatches = 0;
 static int counterPagePatchPatchesEnabled = 0;
 static int counterPagePatchSearchReplaceSuccess = 0;
+static int counter_vm_page_validate_cs_mapped = 0;
+static int counter_vm_page_validate_cs_mapped_slow = 0;
 
 void UserPatcher::dumpCounters() {
 #define dumponecounter(a) DBGLOG("user", #a " = %d", a);
+	dumponecounter(counter_vm_page_validate_cs_mapped)
+	dumponecounter(counter_vm_page_validate_cs_mapped_slow)
 	dumponecounter(counterPagePatch)
 	dumponecounter(counterPagePatchBigSur)
 	dumponecounter(counterPagePatchGetPath)
@@ -613,6 +617,16 @@ boolean_t UserPatcher::codeSignValidateRangeWrapper(vnode_t vp, memory_object_t 
 	boolean_t res = FunctionCast(codeSignValidateRangeWrapper, that->orgCodeSignValidateRangeWrapper)(vp, pager, range_offset, data, data_size, tainted);
 	if (res) that->performPagePatch(data, (size_t)data_size, vp, range_offset);
 	return res;
+}
+
+void UserPatcher::wrap_vm_page_validate_cs_mapped(vm_page_t page, vm_map_size_t fault_page_size, vm_map_offset_t fault_phys_offset, const void *kaddr) {
+	counter_vm_page_validate_cs_mapped++;
+	FunctionCast(wrap_vm_page_validate_cs_mapped, that->org_vm_page_validate_cs_mapped)(page, fault_page_size, fault_phys_offset, kaddr);
+}
+
+void UserPatcher::wrap_vm_page_validate_cs_mapped_slow(vm_page_t page, const void *kaddr) {
+	counter_vm_page_validate_cs_mapped_slow++;
+	FunctionCast(wrap_vm_page_validate_cs_mapped_slow, that->org_vm_page_validate_cs_mapped_slow)(page, kaddr);
 }
 
 void UserPatcher::onPath(const char *path, uint32_t len) {
@@ -1678,6 +1692,20 @@ bool UserPatcher::hookMemoryAccess() {
 		if (!patcher->routeMultiple(KernelPatcher::KernelID, &request, 1, 0, 0, true, false)) {
 			DBGLOG("user", "failed to hook _task_set_main_thread_qos");
 			// This is not an error, early 10.12 versions have no such function
+		}
+	}
+
+	if (getKernelVersion() >= KernelVersion::BigSur) {
+		KernelPatcher::RouteRequest request {"_vm_page_validate_cs_mapped", wrap_vm_page_validate_cs_mapped, org_vm_page_validate_cs_mapped};
+		if (!patcher->routeMultiple(KernelPatcher::KernelID, &request, 1, 0, 0, true, false)) {
+			DBGLOG("user", "failed to hook _vm_page_validate_cs_mapped");
+		}
+	}
+
+	if (getKernelVersion() >= KernelVersion::Mojave) {
+		KernelPatcher::RouteRequest request {"_vm_page_validate_cs_mapped_slow", wrap_vm_page_validate_cs_mapped_slow, org_vm_page_validate_cs_mapped_slow};
+		if (!patcher->routeMultiple(KernelPatcher::KernelID, &request, 1, 0, 0, true, false)) {
+			DBGLOG("user", "failed to hook _vm_page_validate_cs_mapped_slow");
 		}
 	}
 

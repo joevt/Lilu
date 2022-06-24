@@ -262,6 +262,7 @@ private:
 	using vm_shared_region_t = void *;
 	using shared_file_mapping_np = void *;
 	using sr_file_mappings = void *;
+	using vm_page_t = void *;
 	using t_current_map = vm_map_t (*)(void);
 	using t_get_task_map = vm_map_t (*)(task_t);
 	using t_get_map_min = vm_map_offset_t (*)(vm_map_t);
@@ -270,6 +271,8 @@ private:
 	using t_vm_map_read_user = kern_return_t (*)(vm_map_t, vm_map_address_t, const void *, vm_size_t);
 	using t_vm_map_write_user = kern_return_t (*)(vm_map_t, const void *, vm_map_address_t, vm_size_t);
 	using t_vm_map_lookup_entry = boolean_t (*)(vm_map_t map, vm_map_address_t address, vm_map_entry_t *entry);
+	using t_vm_page_validate_cs_mapped = void (*)(vm_page_t page, vm_map_size_t fault_page_size, vm_map_offset_t fault_phys_offset, const void *kaddr);
+	using t_vm_page_validate_cs_mapped_slow = void (*)(vm_page_t page, const void *kaddr);
 
 	/**
 	 *  Original kernel function trampolines
@@ -279,6 +282,9 @@ private:
 	mach_vm_address_t orgVmSharedRegionMapFile {};
 	mach_vm_address_t orgVmSharedRegionSlide {};
 	mach_vm_address_t orgTaskSetMainThreadQos {};
+	mach_vm_address_t org_vm_page_validate_cs_mapped {};
+	mach_vm_address_t org_vm_page_validate_cs_mapped_slow {};
+
 	t_current_map org_current_map {nullptr};
 	t_get_map_min org_get_map_min {nullptr};
 	t_get_task_map org_get_task_map {nullptr};
@@ -296,6 +302,9 @@ private:
 	static boolean_t codeSignValidatePageWrapperYosemite    (void *blobs, memory_object_t pager, memory_object_offset_t page_offset , const void *data,                                 unsigned *tainted);
 	static boolean_t codeSignValidatePageWrapperMountainLion(void *blobs, memory_object_t pager, memory_object_offset_t page_offset , const void *data,                                boolean_t *tainted);
 	static boolean_t codeSignValidatePageWrapperLeopard     (void *blobs,                        memory_object_offset_t page_offset , const void *data,                                boolean_t *tainted);
+
+	static void wrap_vm_page_validate_cs_mapped(vm_page_t page, vm_map_size_t fault_page_size, vm_map_offset_t fault_phys_offset, const void *kaddr);
+	static void wrap_vm_page_validate_cs_mapped_slow(vm_page_t page, const void *kaddr);
 
 	static vm_map_t swapTaskMap(task_t task, thread_t thread, vm_map_t map, boolean_t doswitch);
 	static vm_map_t vmMapSwitch(vm_map_t map);
