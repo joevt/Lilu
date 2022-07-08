@@ -567,6 +567,7 @@ void UserPatcher::performPagePatch(const void *data_ptr, size_t data_size, vnode
 										*reinterpret_cast<uint64_t *>(patch) = *reinterpret_cast<const uint64_t *>(rpatch.replace);
 										break;
 									default:
+										DBGLOG("user", "memcpy dst:0x%llX size:%d", (uint64_t)patch, (int)rpatch.size);
 										lilu_os_memcpy(patch, rpatch.replace, rpatch.size);
 								}
 								
