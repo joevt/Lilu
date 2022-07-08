@@ -129,9 +129,19 @@ private:
 	static int initConsole(PE_Video *info, int op);
 
 	/**
+	 *  PE_parse_boot_argn wrapper for finding valid boot-args or when a boot-arg is used.
+	 */
+	static boolean_t wrap_PE_parse_boot_argn(const char *arg_string, void *arg_ptr, int max_arg);
+
+	/**
+	 *  serial_init wrapper for initializing serial port output in case macOS doesn't do it automatically.
+	 */
+	static int wrap_serial_init( void );
+	
+	/**
 	 *  serial_keyboard_init wrapper used for signaling Lilu when rootvnode is available for reading files.
 	 */
-	static void serialKeyboardInit(void);
+	static void wrap_serial_keyboard_init(void);
 
 #if defined(__x86_64__)
 	/**
@@ -153,9 +163,19 @@ private:
 	mach_vm_address_t orgInitConsole {0};
 
 	/**
+	 *  Original function pointer for PE_parse_boot_argn.
+	 */
+	mach_vm_address_t org_PE_parse_boot_argn {0};
+	
+	/**
+	 *  Original function pointer for serial_init.
+	 */
+	mach_vm_address_t org_serial_init {0};
+	
+	/**
 	 *  Original function pointer for serial_keyboard_init.
 	 */
-	mach_vm_address_t orgSerialKeyboardInit {0};
+	mach_vm_address_t org_serial_keyboard_init {0};
 
 #ifdef DEBUG
 	/**
