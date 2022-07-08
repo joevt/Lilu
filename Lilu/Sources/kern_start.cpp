@@ -75,6 +75,11 @@ void PRODUCT_NAME::stop(IOService *provider) {
 
 Configuration ADDPR(config);
 
+
+static bool * disable_serial_output = NULL;
+static bool * disable_iolog_serial_output = NULL;
+static unsigned int * debug_boot_arg = NULL;
+
 bool Configuration::performEarlyInit() {
 	DBGLOG("config", "[ Configuration::performEarlyInit");
 	kernelPatcher.init();
@@ -86,9 +91,24 @@ bool Configuration::performEarlyInit() {
 		DBGLOG("config", "] Configuration::performEarlyInit false");
 		return false;
 	}
+	if (!debug_boot_arg)              debug_boot_arg              = reinterpret_cast<unsigned int *>(kernelPatcher.solveSymbol(kernelPatcher.KernelID, "_debug_boot_arg"              ));
+	if (!disable_serial_output)       disable_serial_output       = reinterpret_cast<        bool *>(kernelPatcher.solveSymbol(kernelPatcher.KernelID, "_disable_serial_output"       ));
+	if (!disable_iolog_serial_output) disable_iolog_serial_output = reinterpret_cast<        bool *>(kernelPatcher.solveSymbol(kernelPatcher.KernelID, "_disable_iolog_serial_output" ));
 
-	KernelPatcher::RouteRequest request {"_PE_initialize_console", initConsole, orgInitConsole};
-	if (!kernelPatcher.routeMultiple(KernelPatcher::KernelID, &request, 1, 0, 0, true, false)) {
+	DBGLOG("config", "debug_boot_arg:0x%x%s disable_serial_output:%s disable_iolog_serial_output:%s",
+		debug_boot_arg ? *debug_boot_arg : 0,
+		debug_boot_arg ? "" : " = NULL",
+		disable_serial_output ? *disable_serial_output ? "true" : "false" : "NULL",
+		disable_iolog_serial_output ? *disable_iolog_serial_output ? "true" : "false" : "NULL"
+	);
+	
+	KernelPatcher::RouteRequest requests[] = {
+		{"_PE_initialize_console", initConsole, orgInitConsole},
+		{"_PE_parse_boot_argn", wrap_PE_parse_boot_argn, org_PE_parse_boot_argn},
+		{"_serial_init", wrap_serial_init, org_serial_init},
+	};
+	
+	if (!kernelPatcher.routeMultiple(KernelPatcher::KernelID, requests, arrsize(requests), 0, 0, true, false)) {
 		SYSLOG("config", "failed to initialise through console routing");
 		kernelPatcher.deinit();
 		kernelPatcher.clearError();
@@ -96,6 +116,10 @@ bool Configuration::performEarlyInit() {
 		return false;
 	}
 
+	if (org_serial_init) {
+		wrap_serial_init();
+	}
+	
 	DBGLOG("config", "] Configuration::performEarlyInit true");
 	return true;
 }
@@ -126,6 +150,20 @@ int Configuration::initConsole(PE_Video *info, int op) {
 	return FunctionCast(initConsole, ADDPR(config).orgInitConsole)(info, op);
 }
 
+boolean_t Configuration::wrap_PE_parse_boot_argn(const char *arg_string, void *arg_ptr, int max_arg) {
+	boolean_t result = FunctionCast(wrap_PE_parse_boot_argn, ADDPR(config).org_PE_parse_boot_argn)(arg_string, arg_ptr, max_arg);
+	if (arg_string && strcmp("ioimageloader.logging", arg_string)) {
+		DBGLOG("config", "PE_parse_boot_argn \"%s\" size:%d result:%s", arg_string, max_arg, result ? "true" : "false");
+	}
+	return result;
+}
+
+int Configuration::wrap_serial_init( void ) {
+	int result = FunctionCast(wrap_serial_init, ADDPR(config).org_serial_init)();
+	DBGLOG("config", "[] serial_init result:%d", result);
+	return result;
+}
+
 /*
 We can affect the start time of Lilu::start by changing IOResourceMatch in Info.plist.
 - Sometimes UserPatcher::loadFilesForPatching (started by kern_start below) happens too early and a panic occurs: "thread wants credential but has no BSD process"
@@ -137,15 +175,15 @@ To solve this, we trap serial_keyboard_init in performCommonInit - it happens ve
 
 static bool userReady = false;
 static bool userActivated = false;
-static void ** rootvnodePtr = NULL; // set before serialKeyboardInit is called; don't use "extern struct vnode *rootvnode" because it is not exported by the any dependencies listed in Info.plist
+static void ** rootvnodePtr = NULL; // set before wrap_serial_keyboard_init is called; don't use "extern struct vnode *rootvnode" because it is not exported by any dependencies listed in Info.plist
 
-void Configuration::serialKeyboardInit(void) {
-	DBGLOG("config", "[ Configuration::serialKeyboardInit");
-	FunctionCast(serialKeyboardInit, ADDPR(config).orgSerialKeyboardInit)();
+void Configuration::wrap_serial_keyboard_init(void) {
+	DBGLOG("config", "[ Configuration::wrap_serial_keyboard_init");
+	FunctionCast(wrap_serial_keyboard_init, ADDPR(config).org_serial_keyboard_init)();
 	IOLockLock(ADDPR(config).policyLock);
 	ADDPR(config).processUserLoadCallbacks();
 	IOLockUnlock(ADDPR(config).policyLock);
-	DBGLOG("config", "] Configuration::serialKeyboardInit");
+	DBGLOG("config", "] Configuration::wrap_serial_keyboard_init");
 }
 
 void Configuration::processUserLoadCallbacks() {
@@ -165,9 +203,9 @@ void Configuration::processUserLoadCallbacks() {
 bool Configuration::performCommonInit() {
 	DBGLOG("config", "[ Configuration::performCommonInit");
 
-	KernelPatcher::RouteRequest request {"_serial_keyboard_init", serialKeyboardInit, orgSerialKeyboardInit};
+	KernelPatcher::RouteRequest request {"_serial_keyboard_init", wrap_serial_keyboard_init, org_serial_keyboard_init};
 	if (!kernelPatcher.routeMultiple(KernelPatcher::KernelID, &request, 1, 0, 0, true, false)) {
-		SYSLOG("config", "failed to patch serialKeyboardInit for user patching");
+		SYSLOG("config", "failed to patch serial_keyboard_init for user patching");
 		kernelPatcher.clearError();
 	}
 
