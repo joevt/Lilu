@@ -593,14 +593,14 @@ void MachInfo::findSectionBounds(void *ptr, size_t sourceSize, vm_address_t &vms
 					if (!strncmp(sect->sectname, sectionName, sizeof(sect->sectname))) {
 						auto sptr = static_cast<uint8_t *>(ptr) + sect->offset;
 						if (sptr + sect->size > endaddr) {
-							SYSLOG("mach", "found section %s size %u in segment %llu is invalid", sectionName, sno, (uint64_t)vmsegment);
+							SYSLOG("mach", "found %s::%s @ #%u.%u segment:0x%x..0x%x section:0x%x..0x%x is invalid", segmentName, sectionName, no, sno, scmd->vmaddr, scmd->vmaddr + scmd->vmsize - 1, sect->addr, sect->addr + sect->size - 1);
 							return;
 						}
 						vmsegment = scmd->vmaddr;
 						vmsection = sect->addr;
 						sectionptr = sptr;
 						sectionSize = static_cast<size_t>(sect->size);
-						DBGLOG("mach", "found section %s size %u in segment %llu", sectionName, sno, (uint64_t)vmsegment);
+						DBGLOG("mach", "found %s::%s @ #%u.%u segment:0x%x..0x%x section:0x%x..0x%x", segmentName, sectionName, no, sno, scmd->vmaddr, scmd->vmaddr + scmd->vmsize - 1, sect->addr, sect->addr + sect->size - 1);
 						return;
 					}
 
@@ -622,14 +622,14 @@ void MachInfo::findSectionBounds(void *ptr, size_t sourceSize, vm_address_t &vms
 					if (!strncmp(sect->sectname, sectionName, sizeof(sect->sectname))) {
 						auto sptr = static_cast<uint8_t *>(ptr) + sect->offset;
 						if (sptr + sect->size > endaddr) {
-							SYSLOG("mach", "found section %s size %u in segment %llu is invalid", sectionName, sno, (uint64_t)vmsegment);
+							SYSLOG("mach", "found %s::%s @ #%u.%u segment:0x%llx..0x%llx.. section:0x%llx..0x%llx is invalid", segmentName, sectionName, no, sno, scmd->vmaddr, scmd->vmaddr + scmd->vmsize - 1, sect->addr, sect->addr + sect->size - 1);
 							return;
 						}
 						vmsegment = (vm_address_t)scmd->vmaddr;
 						vmsection = (vm_address_t)sect->addr;
 						sectionptr = sptr;
 						sectionSize = static_cast<size_t>(sect->size);
-						DBGLOG("mach", "found section %s size %u in segment %llu", sectionName, sno, (uint64_t)vmsegment);
+						DBGLOG("mach", "found %s::%s @ #%u.%u segment:0x%llx..0x%llx.. section:0x%llx..0x%llx", segmentName, sectionName, no, sno, scmd->vmaddr, scmd->vmaddr + scmd->vmsize - 1, sect->addr, sect->addr + sect->size - 1);
 						return;
 					}
 
