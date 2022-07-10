@@ -437,6 +437,7 @@ static int counterPagePatchWithLookupStoragePageMatched = 0;
 static int counterPagePatchWithLookupStorageReplaceSuccess = 0;
 static int counterPagePatchWithoutLookupStorageBigSur = 0;
 static int counterPagePatchWithoutLookupStorageGetPath = 0;
+static int counterPagePatchWithoutLookupStoragePathIsSharedCache = 0;
 static int counterPagePatchWithoutLookupStorageModSize = 0;
 static int counterPagePatchWithoutLookupStorageMatchPath = 0;
 static int counterPagePatchWithoutLookupStoragePatches = 0;
@@ -460,6 +461,7 @@ void UserPatcher::dumpCounters() {
 	dumponecounter(counterPagePatchWithLookupStorageReplaceSuccess)
 	dumponecounter(counterPagePatchWithoutLookupStorageBigSur)
 	dumponecounter(counterPagePatchWithoutLookupStorageGetPath)
+	dumponecounter(counterPagePatchWithoutLookupStoragePathIsSharedCache)
 	dumponecounter(counterPagePatchWithoutLookupStorageModSize)
 	dumponecounter(counterPagePatchWithoutLookupStorageMatchPath)
 	dumponecounter(counterPagePatchWithoutLookupStoragePatches)
@@ -467,38 +469,55 @@ void UserPatcher::dumpCounters() {
 	dumponecounter(counterPagePatchWithoutLookupStorageSearchReplaceSuccess)
 }
 
+#define FRAMEWORKSPATH "/System/Library/Frameworks/"
+
 void UserPatcher::performPagePatchForSharedCacheWithoutLookupStorage(const void *data_ptr, size_t data_size, vnode_t vp, memory_object_offset_t page_offset) {
-	char path[PATH_MAX];
-	int pathlen = PATH_MAX;
-	if (vp && getKernelVersion() >= KernelVersion::BigSur) {
+	if (binaryModSize && vp && getKernelVersion() >= KernelVersion::BigSur) {
 		// BigSur has shared dyld cache without framework binaries.
 		// lookupStorage is not populated for patches without binaries.
 		// Therefore, we need to bypass lookupStorage to perform patches on shared dyld cache frameworks.
 		
 		counterPagePatchWithoutLookupStorageBigSur++;
+
+		char path[PATH_MAX];
+		int pathlen = PATH_MAX;
 		if (vn_getpath(vp, path, &pathlen) == 0) {
 			counterPagePatchWithoutLookupStorageGetPath++;
-			for (size_t i = 0; i < binaryModSize; i++) {
-				counterPagePatchWithoutLookupStorageModSize++;
-				if ( /* !strcmp(binaryMod[i]->path, path) || */ (binaryMod[i]->startTEXT && UserPatcher::matchSharedCachePath(path))) {
-					// startTEXT is only set for shared dyld cache frameworks.
-					// For patches that are not shared dyld cache, use lookupStorage method below.
-					// TO DO: One day we'll want to be able to create lookupStorage for patches of shared dyld cache frameworks, but not today.
-					// TO DO: check process info - for example, don't do patch on CoreDisplay framework unless the process is WindowServer
-					counterPagePatchWithoutLookupStorageMatchPath++;
-					for (size_t p = 0; p < binaryMod[i]->count; p++) {
-						counterPagePatchWithoutLookupStoragePatches++;
-						if (binaryMod[i]->patches[p].section != ProcInfo::SectionDisabled) {
-							counterPagePatchWithoutLookupStoragePatchesEnabled++;
-							// TO DO: check cpu, flags, skip, count, segment
-							if (UNLIKELY(KernelPatcher::findAndReplace(const_cast<void *>(data_ptr), data_size, binaryMod[i]->patches[p].find, binaryMod[i]->patches[p].size, binaryMod[i]->patches[p].replace, binaryMod[i]->patches[p].size))) {
-								counterPagePatchWithoutLookupStorageSearchReplaceSuccess++;
-								DBGLOG("user", "performPagePatch page:%llx page_offset:%llx mod:%d patch:%d size:%d path:%s modpath:%s", (uint64_t)data_ptr, (uint64_t)page_offset, (int)i, (int)p, (int)binaryMod[i]->patches[p].size, path, binaryMod[i]->path);
+			bool isSharedCache = UserPatcher::matchSharedCachePath(path);
+			if (isSharedCache) {
+				counterPagePatchWithoutLookupStoragePathIsSharedCache++;
+				for (size_t i = 0; i < binaryModSize; i++) {
+					counterPagePatchWithoutLookupStorageModSize++;
+					if (
+						/* !strcmp(binaryMod[i]->path, path) || */
+						(
+							(
+								// startTEXT is only set for shared dyld cache frameworks (but only if the map file is successfully read.
+								// For Ventura, the map file is on Preboot but it's not mounted at /Volumes/Preboot/System/Library/ when Lilu tries to read it?
+								binaryMod[i]->startTEXT
+								||
+								(getKernelVersion() >= KernelVersion::Ventura && !strncmp(binaryMod[i]->path, FRAMEWORKSPATH, sizeof(FRAMEWORKSPATH) - 1))
+							)
+						)
+					) {
+						// For patches that are not shared dyld cache, use lookupStorage method below.
+						// TO DO: One day we'll want to be able to create lookupStorage for patches of shared dyld cache frameworks, but not today.
+						// TO DO: check process info - for example, don't do patch on CoreDisplay framework unless the process is WindowServer
+						counterPagePatchWithoutLookupStorageMatchPath++;
+						for (size_t p = 0; p < binaryMod[i]->count; p++) {
+							counterPagePatchWithoutLookupStoragePatches++;
+							if (binaryMod[i]->patches[p].section != ProcInfo::SectionDisabled) {
+								counterPagePatchWithoutLookupStoragePatchesEnabled++;
+								// TO DO: check cpu, flags, skip, count, segment
+								if (UNLIKELY(KernelPatcher::findAndReplace(const_cast<void *>(data_ptr), data_size, binaryMod[i]->patches[p].find, binaryMod[i]->patches[p].size, binaryMod[i]->patches[p].replace, binaryMod[i]->patches[p].size))) {
+									counterPagePatchWithoutLookupStorageSearchReplaceSuccess++;
+									DBGLOG("user", "performPagePatch page:%llx page_offset:%llx mod:%d patch:%d size:%d path:%s modpath:%s", (uint64_t)data_ptr, (uint64_t)page_offset, (int)i, (int)p, (int)binaryMod[i]->patches[p].size, path, binaryMod[i]->path);
+								}
 							}
-						}
-					} // for patch
-				} // if name match
-			} // for binaryMod
+						} // for patch
+					} // if name match
+				} // for binaryMod
+			} // if (isSharedCache)
 		} // if vn_getpath
 	} // if BigSur
 }
@@ -1272,6 +1291,7 @@ bool UserPatcher::loadDyldSharedCacheMapping() {
 	size_t bufferSize {0};
 	bool isHaswell = BaseDeviceInfo::get().cpuHasAvx2;
 	if (getKernelVersion() >= KernelVersion::Ventura) {
+		// This probably fails because /System/Volumes/Preboot hasn't been mounted yet!
 		buffer = FileIO::readFileToBuffer(isHaswell ? venturaSharedCacheMapHaswell : venturaSharedCacheMapLegacy, bufferSize);
 	}
 	else if (getKernelVersion() >= KernelVersion::BigSur) {
