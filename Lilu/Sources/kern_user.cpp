@@ -27,62 +27,66 @@ static UserPatcher *that {nullptr};
 [????] (struct) proc {
 // (i386)
 // 10.5.9, 10.6.8
-    0x00,[   8] (struct) (anonymous struct) p_list { le_next, le_prev }
-    0x08,[   4] (pid_t) p_pid
-    0x0c,[   4] (void *) task
+*   0x0,[   8] (struct) (anonymous struct) p_list { le_next, le_prev }
++  0x08,[   4] (pid_t) p_pid
++  0x0c,[   4] (void *) task
 
 // (x86_64)
 // 10.6.8, 10.7.5, 10.8, 10.9, 10.10.5, 10.11.6, 10.12.6, 10.13.6
-    0x00,[  16] (struct) (anonymous struct) p_list { le_next, le_prev }
-    0x10,[   4] (pid_t) p_pid
-    0x18,[   8] (void *) task
+*   0x0,[  16] (struct) (anonymous struct) p_list { le_next, le_prev }
++  0x10,[   4] (pid_t) p_pid
++  0x18,[   8] (void *) task
 
 // 10.14.6, 10.15.7, 11.6.4
-    0x00,[  16] (struct) (anonymous struct) p_list { le_next, le_prev }
-    0x10,[   8] (void *) task
+*   0x0,[  16] (struct) (anonymous struct) p_list { le_next, le_prev }
++  0x10,[   8] (void *) task
 
 // 12.2.1
-    0x00,[  16] (struct) (anonymous struct) p_list { le_next, le_prev }
-    0x10,[   8] (void *) task
-    0x18,[   8] (proc *) p_pptr
-    0x20,[   8] (proc_ro_t) p_proc_ro
+*   0x0,[  16] (struct) (anonymous struct) p_list { le_next, le_prev }
++  0x10,[   8] (void *) task
++  0x18,[   8] (proc *) p_pptr
++  0x20,[   8] (proc_ro_t) p_proc_ro
 
-    ...
+// 13.0.0 b3
+*   0x0,[  16] (struct) (anonymous struct) p_list { le_next, le_prev }
++  0x10,[   8] (proc *) p_pptr
++  0x18,[   8] (proc_ro_t) p_proc_ro
+
 }
 
-// 12.2.1
+// 12.2.1, 13.0.0 b3
 [ 120] (struct) proc_ro {
 +   0x0,[   8] (proc *) pr_proc
 +   0x8,[   8] (task *) pr_task
-*   0x10,[  48] (union) (anonymous union)  {
-    *   0x10,[  48] (struct) (anonymous struct) { same as proc_data }
-    *   0x10,[  48] (struct) proc_ro_data proc_data {
-        +   0x10,[   8] (uint64_t) p_uniqueid
-        +   0x18,[   4] (int) p_idversion
-        +   0x1c,[   4] (uint32_t) p_csflags
-        +   0x20,[   8] (ucred *) p_ucred
-        +   0x28,[   8] (uint8_t *) syscall_filter_mask
-        *   0x30,[  12] (struct) proc_platform_ro_data p_platform_data {
-            +   0x30,[   4] (uint32_t) p_platform
-            +   0x34,[   4] (uint32_t) p_min_sdk
-            +   0x38,[   4] (uint32_t) p_sdk
+*  0x10,[  48] (union) (anonymous union)  {
+    *  0x10,[  48] (struct) (anonymous struct) { same as proc_data }
+    *  0x10,[  48] (struct) proc_ro_data proc_data {
+        +  0x10,[   8] (uint64_t) p_uniqueid
+        +  0x18,[   4] (int) p_idversion
+        +  0x1c,[   4] (uint32_t) p_csflags
+        +  0x20,[   8] (ucred *) p_ucred
+        +  0x28,[   8] (uint8_t *) syscall_filter_mask
+        *  0x30,[  12] (struct) proc_platform_ro_data p_platform_data {
+            +  0x30,[   4] (uint32_t) p_platform
+            +  0x34,[   4] (uint32_t) p_min_sdk
+            +  0x38,[   4] (uint32_t) p_sdk
             }
         }
     }
-*   0x40,[  56] (union) (anonymous union)  {
-    *   0x40,[  56] (struct) (anonymous struct) { same as task_data }
-    *   0x40,[  56] (struct) task_ro_data task_data {
-        *   0x40,[  40] (struct) task_token_ro_data task_tokens {
-            *   0x40,[   8] (struct) security_token_t sec_token {
-                +   0x40,[   8] (unsigned int[2]) val
+*  0x40,[  56] (union) (anonymous union)  {
+    *  0x40,[  56] (struct) (anonymous struct) { same as task_data }
+    *  0x40,[  56] (struct) task_ro_data task_data {
+        *  0x40,[  40] (struct) task_token_ro_data task_tokens {
+            *  0x40,[   8] (struct) security_token_t sec_token {
+                +  0x40,[   8] (unsigned int[2]) val
+                }
+            *  0x48,[  32] (struct) audit_token_t audit_token {
+                +  0x48,[  32] (unsigned int[8]) val
+                }
             }
-            *   0x48,[  32] (struct) audit_token_t audit_token {
-                +   0x48,[  32] (unsigned int[8]) val
-            }
-        }
-        *   0x68,[  16] (struct) task_filter_ro_data task_filters {
-            +   0x68,[   8] (uint8_t *) mach_trap_filter_mask
-            +   0x70,[   8] (uint8_t *) mach_kobj_filter_mask
+        *  0x68,[  16] (struct) task_filter_ro_data task_filters {
+            +  0x68,[   8] (uint8_t *) mach_trap_filter_mask
+            +  0x70,[   8] (uint8_t *) mach_kobj_filter_mask
             }
         }
     }
@@ -205,7 +209,7 @@ kern_return_t UserPatcher::vmProtect(vm_map_t map, vm_offset_t start, vm_size_t 
 				}
 			}
 			else if (getKernelVersion() >= KernelVersion::Monterey) {
-				void *proc_ro = getMember<void *>(currproc, 0x20);
+				void *proc_ro = getMember<void *>(currproc, (getKernelVersion() >= KernelVersion::Ventura) ? 0x18 : 0x20);
 				void *proc = getMember<void *>(proc_ro, 0x00);
 				if (proc == currproc) {
 					flags = &getMember<uint32_t>(proc_ro, 0x1c);
