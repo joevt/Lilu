@@ -429,7 +429,12 @@ void UserPatcher::deinit() {
 static int counter_cs_validate_page = 0;
 static int counter_cs_validate_page_true = 0;
 static int counterPagePatch = 0;
-static int counterPagePatchReplaceSuccess = 0;
+static int counterPagePatchWithLookupStorageSize = 0;
+static int counterPagePatchWithLookupStorageMatch = 0;
+static int counterPagePatchWithLookupStorageMaybe = 0;
+static int counterPagePatchWithLookupStorageDefinitely = 0;
+static int counterPagePatchWithLookupStoragePageMatched = 0;
+static int counterPagePatchWithLookupStorageReplaceSuccess = 0;
 static int counterPagePatchWithoutLookupStorageBigSur = 0;
 static int counterPagePatchWithoutLookupStorageGetPath = 0;
 static int counterPagePatchWithoutLookupStorageModSize = 0;
@@ -447,7 +452,12 @@ void UserPatcher::dumpCounters() {
 	dumponecounter(counter_cs_validate_page)
 	dumponecounter(counter_cs_validate_page_true)
 	dumponecounter(counterPagePatch)
-	dumponecounter(counterPagePatchReplaceSuccess)
+	dumponecounter(counterPagePatchWithLookupStorageSize)
+	dumponecounter(counterPagePatchWithLookupStorageMatch)
+	dumponecounter(counterPagePatchWithLookupStorageMaybe)
+	dumponecounter(counterPagePatchWithLookupStorageDefinitely)
+	dumponecounter(counterPagePatchWithLookupStoragePageMatched)
+	dumponecounter(counterPagePatchWithLookupStorageReplaceSuccess)
 	dumponecounter(counterPagePatchWithoutLookupStorageBigSur)
 	dumponecounter(counterPagePatchWithoutLookupStorageGetPath)
 	dumponecounter(counterPagePatchWithoutLookupStorageModSize)
@@ -502,11 +512,14 @@ void UserPatcher::performPagePatch(const void *data_ptr, size_t data_size, vnode
 		auto ptr = static_cast<const uint8_t *>(data_ptr) + data_off;
 
 		if (sz > 0) {
+			counterPagePatchWithLookupStorageSize++;
 			for (size_t i = 0; i < Lookup::matchNum && maybe != sz; i++) {
+				counterPagePatchWithLookupStorageMatch++;
 				uint64_t value = *reinterpret_cast<const uint64_t *>(ptr + lookup.offs[i]);
 
 				if (i == 0) {
 					for (maybe = 0; maybe < sz; maybe++) {
+						counterPagePatchWithLookupStorageMaybe++;
 						if (lookup.c[i][maybe] == value) {
 							// We have a possible match
 							DBGLOG("user", "found a possible match for %lu of %016llX", i, OSSwapHostToBigInt64(value));
@@ -526,10 +539,12 @@ void UserPatcher::performPagePatch(const void *data_ptr, size_t data_size, vnode
 			}
 
 			if (maybe < sz) {
+				counterPagePatchWithLookupStorageDefinitely++;
 				auto &storage = that->lookupStorage[maybe];
 
 				// That's a patch
 				if (!memcmp(storage->page->p, ptr, PAGE_SIZE)) {
+					counterPagePatchWithLookupStoragePageMatched++;
 					for (size_t r = 0, rsz = storage->refs.size(); r < rsz; r++) {
 						// Apply the patches
 						auto &ref = storage->refs[r];
@@ -580,7 +595,7 @@ void UserPatcher::performPagePatch(const void *data_ptr, size_t data_size, vnode
 								if (vn_getpath(vp, path, &pathlen) != 0) path[0] = '\0';
 								DBGLOG("user", "performPagePatch page:%llx page_offset:%llx patch:%d size:%d path:%s modpath:%s", (uint64_t)data_ptr, (uint64_t)page_offset, (int)ref->i, (int)rpatch.size, path, storage->mod->path);
 								foundpatch = true;
-								counterPagePatchReplaceSuccess++;
+								counterPagePatchWithLookupStorageReplaceSuccess++;
 							}
 
 							if (MachInfo::setKernelWriting(false, KernelPatcher::kernelWriteLock) == KERN_SUCCESS) {
