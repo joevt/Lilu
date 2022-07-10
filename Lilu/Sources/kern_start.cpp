@@ -79,6 +79,7 @@ Configuration ADDPR(config);
 static bool * disable_serial_output = NULL;
 static bool * disable_iolog_serial_output = NULL;
 static unsigned int * debug_boot_arg = NULL;
+static bool log_PE_parse_boot_argn = false;
 
 bool Configuration::performEarlyInit() {
 	DBGLOG("config", "[ Configuration::performEarlyInit");
@@ -101,6 +102,8 @@ bool Configuration::performEarlyInit() {
 		disable_serial_output ? *disable_serial_output ? "true" : "false" : "NULL",
 		disable_iolog_serial_output ? *disable_iolog_serial_output ? "true" : "false" : "NULL"
 	);
+	
+	log_PE_parse_boot_argn = checkKernelArgument("-logbootarg");
 	
 	KernelPatcher::RouteRequest requests[] = {
 		{"_PE_initialize_console", initConsole, orgInitConsole},
@@ -152,7 +155,7 @@ int Configuration::initConsole(PE_Video *info, int op) {
 
 boolean_t Configuration::wrap_PE_parse_boot_argn(const char *arg_string, void *arg_ptr, int max_arg) {
 	boolean_t result = FunctionCast(wrap_PE_parse_boot_argn, ADDPR(config).org_PE_parse_boot_argn)(arg_string, arg_ptr, max_arg);
-	if (arg_string && strcmp("ioimageloader.logging", arg_string)) {
+	if (log_PE_parse_boot_argn && arg_string && strcmp("ioimageloader.logging", arg_string)) {
 		DBGLOG("config", "PE_parse_boot_argn \"%s\" size:%d result:%s", arg_string, max_arg, result ? "true" : "false");
 	}
 	return result;
