@@ -707,7 +707,12 @@ void UserPatcher::patchBinary(vm_map_t map, const char *path, uint32_t len) {
 		// note: patchSharedCache doesn't do anything if lookupStorage is empty or if all the lookupStorage items are not for shared cache binaries
 		patchSharedCache(map, storedSharedCacheSlide, CPU_TYPE_X86_64);
 	}
-	if (!patchDyldSharedCache || !sharedCacheSlideStored/* || !lookupStorage.size() */) {
+	if (getKernelVersion() >= KernelVersion::Ventura) {
+		SYSLOG("user", "Not going to try restrict method for Ventura");
+		// because we might get a panic when we try to change the permission of a single page:
+		// vm_map_clip(0x*): Attempting to clip an atomic VM map entry 0x* [0x*:0x*] at 0x* @vm_map.c:5514
+	}
+	else if (!patchDyldSharedCache || !sharedCacheSlideStored/* || !lookupStorage.size() */) {
 		if (patchDyldSharedCache) {
 			SYSLOG("user", "%s%sfallback to restrict",
 				sharedCacheSlideStored ? "" : "no slide present, ",
