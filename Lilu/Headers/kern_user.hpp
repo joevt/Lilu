@@ -318,7 +318,7 @@ private:
 	static int vmSharedRegionSlideMojave   (uint32_t slide, mach_vm_offset_t entry_start_address, mach_vm_size_t entry_size, mach_vm_offset_t slide_start, mach_vm_size_t slide_size, mach_vm_offset_t slid_mapping, memory_object_control_t sr_file_control);
 	static int vmSharedRegionSlideMavericks(uint32_t slide, mach_vm_offset_t entry_start_address, mach_vm_size_t entry_size, mach_vm_offset_t slide_start, mach_vm_size_t slide_size, memory_object_control_t sr_file_control);
 	static kern_return_t vmSharedRegionSlideLion(vm_offset_t vaddr, uint32_t pageIndex);
-	
+
 	static void execsigs(proc_t p, thread_t thread);
 	static void taskSetMainThreadQos(task_t task, thread_t main_thread);
 
@@ -438,57 +438,127 @@ private:
 	void patchSharedCache(vm_map_t map, uint32_t slide, cpu_type_t cpu, bool applyChanges=true);
 
 	/**
-	 *  Structure holding userspace lookup patches
+	 *  Structure holding userspace lookup patches for a single page
 	 */
 	struct LookupStorage {
 		struct PatchRef {
-			size_t i {0};
+			size_t i {0}; // the patch index
+
+			// a single patch may occur more than once in a page
 			evector<off_t> pageOffs;
 			evector<off_t> segOffs;
 			static PatchRef *create() {
-				return new PatchRef;
+				PatchRef *r = new PatchRef;
+				if (!r) {
+					DBGLOG("user", "create: r is NULL!");
+				}
+				return r;
 			}
-			static void deleter(PatchRef *r NONNULL) {
-				r->pageOffs.deinit();
-				r->segOffs.deinit();
-				delete r;
+			static void deleter(PatchRef *r) {
+				if (!r) {
+					DBGLOG("user", "deleter: r is NULL!");
+				}
+				else {
+					r->pageOffs.deinit();
+					r->segOffs.deinit();
+					delete r;
+				}
 			}
 		};
 
-		const BinaryModInfo *mod {nullptr};
+		// these three fields indentify a single page
+		const BinaryModInfo *mod {nullptr}; // the binary
+		FileSegment section; // the section of the binary
+		vm_address_t pageOff {0}; // the page of the section
+
+		// multiple patches may be applied to the same page
 		evector<PatchRef *, PatchRef::deleter> refs;
+
+		// a copy of the page from the binary file
 		Page *page {nullptr};
-		vm_address_t pageOff {0};
 
 		static LookupStorage *create() {
 			auto p = new LookupStorage;
 			if (p) {
 				p->page = Page::create();
 				if (!p->page) {
+					DBGLOG("user", "create: p->page is NULL!");
 					deleter(p);
 					p = nullptr;
 				}
 			}
+			else {
+				DBGLOG("user", "create: p is NULL!");
+			}
 			return p;
 		}
 
-		static void deleter(LookupStorage *p NONNULL) {
-			if (p->page) {
-				Page::deleter(p->page);
-				p->page = nullptr;
+		static void deleter(LookupStorage *p) {
+			if (!p) {
+				DBGLOG("user", "deleter: p is NULL!");
 			}
-			p->refs.deinit();
-			delete p;
+			else {
+				if (p->page) {
+					Page::deleter(p->page);
+					p->page = nullptr;
+				}
+				p->refs.deinit();
+				delete p;
+			}
 		}
 	};
 
+	evector<LookupStorage *, LookupStorage::deleter> lookupStorage;
+
 	struct Lookup {
-		uint32_t offs[4] {};
+		// how many values to store per lookup page
 		static constexpr size_t matchNum {4};
-		evector<uint64_t> c[matchNum];
+
+		// offs[0] is a page offset where the values at that offset in all the lookup pages differ (are unique)
+		// If no such offset exists, then offs[0] = 4088.
+		// offs[1,2,3] are after offs[0] and wrap arround to 0 if the offset reaches 4096.
+		uint32_t offs[matchNum] {};
+
+		// true if the lookup pages have unique values for the first offset
+		bool firstValueIsUnique {false};
+
+		// the number of lookup pages; show match lookupStorage.size()
+		size_t lookupCount {0};
+
+		// two dimensional array stores 4 values per lookup page where the offset of each value is in the above offs array.
+		uint64_t *c {nullptr};
+
+		// set to true when lookups are ready to use
+		bool ready {false};
+
+		// allocate the two dimensional array
+		void init(size_t initlookups) {
+			lookupCount = initlookups;
+			c = reinterpret_cast<uint64_t*>(kern_os_calloc(matchNum * lookupCount, sizeof(uint64_t)));
+		}
+
+		// get a value from the two dimensional array
+		uint64_t get(size_t i, size_t page) {
+			if (c) return c[i * lookupCount + page];
+			return 0;
+		}
+
+		// set a value in the two dimensional array
+		void set(size_t i, size_t page, uint64_t val) {
+			if (c) c[i * lookupCount + page] = val;
+		}
+
+		// mark the lookups as ready
+		void setReady() {
+			ready = true;
+		}
+
+		// deallocate the two dimensional array
+		void deinit() {
+			if (c) kern_os_free(c);
+		}
 	};
 
-	evector<LookupStorage *, LookupStorage::deleter> lookupStorage;
 	Lookup lookup;
 
 	/**

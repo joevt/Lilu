@@ -421,17 +421,21 @@ void UserPatcher::deinit() {
 
 	pending.deinit();
 	lookupStorage.deinit();
-	for (size_t i = 0; i < Lookup::matchNum; i++)
-		lookup.c[i].deinit();
+	lookup.deinit();
+
 	DBGLOG("user", "] UserPatcher::deinit");
 }
 
 static int counter_cs_validate_page = 0;
 static int counter_cs_validate_page_true = 0;
 static int counterPagePatch = 0;
+static int counterLookupIsNotReady = 0;
 static int counterPagePatchWithLookupStorageSize = 0;
-static int counterPagePatchWithLookupStorageMatch = 0;
+static int counterPagePatchWithLookupStoragePage = 0;
 static int counterPagePatchWithLookupStorageMaybe = 0;
+static int counterPagePatchWithLookupStorageMatch = 0;
+static int counterPagePatchWithLookupStorageSkipMatches = 0;
+static int counterPagePatchWithLookupStorageMatchAll4 = 0;
 static int counterPagePatchWithLookupStorageDefinitely = 0;
 static int counterPagePatchWithLookupStoragePageMatched = 0;
 static int counterPagePatchWithLookupStorageReplaceSuccess = 0;
@@ -453,9 +457,13 @@ void UserPatcher::dumpCounters() {
 	dumponecounter(counter_cs_validate_page)
 	dumponecounter(counter_cs_validate_page_true)
 	dumponecounter(counterPagePatch)
+	dumponecounter(counterLookupIsNotReady)
 	dumponecounter(counterPagePatchWithLookupStorageSize)
-	dumponecounter(counterPagePatchWithLookupStorageMatch)
+	dumponecounter(counterPagePatchWithLookupStoragePage)
 	dumponecounter(counterPagePatchWithLookupStorageMaybe)
+	dumponecounter(counterPagePatchWithLookupStorageMatch)
+	dumponecounter(counterPagePatchWithLookupStorageSkipMatches)
+	dumponecounter(counterPagePatchWithLookupStorageMatchAll4)
 	dumponecounter(counterPagePatchWithLookupStorageDefinitely)
 	dumponecounter(counterPagePatchWithLookupStoragePageMatched)
 	dumponecounter(counterPagePatchWithLookupStorageReplaceSuccess)
@@ -476,7 +484,7 @@ void UserPatcher::performPagePatchForSharedCacheWithoutLookupStorage(const void 
 		// BigSur has shared dyld cache without framework binaries.
 		// lookupStorage is not populated for patches without binaries.
 		// Therefore, we need to bypass lookupStorage to perform patches on shared dyld cache frameworks.
-		
+
 		counterPagePatchWithoutLookupStorageBigSur++;
 
 		char path[PATH_MAX];
@@ -486,17 +494,18 @@ void UserPatcher::performPagePatchForSharedCacheWithoutLookupStorage(const void 
 			bool isSharedCache = UserPatcher::matchSharedCachePath(path);
 			if (isSharedCache) {
 				counterPagePatchWithoutLookupStoragePathIsSharedCache++;
-				for (size_t i = 0; i < binaryModSize; i++) {
+				for (size_t binaryNdx = 0; binaryNdx < binaryModSize; binaryNdx++) {
+					BinaryModInfo *oneBinary = binaryMod[binaryNdx];
 					counterPagePatchWithoutLookupStorageModSize++;
 					if (
-						/* !strcmp(binaryMod[i]->path, path) || */
+						/* !strcmp(oneBinary->path, path) || */
 						(
 							(
 								// startTEXT is only set for shared dyld cache frameworks (but only if the map file is successfully read.
 								// For Ventura, the map file is on Preboot but it's not mounted at /Volumes/Preboot/System/Library/ when Lilu tries to read it?
-								binaryMod[i]->startTEXT
+								oneBinary->startTEXT
 								||
-								(getKernelVersion() >= KernelVersion::Ventura && !strncmp(binaryMod[i]->path, FRAMEWORKSPATH, sizeof(FRAMEWORKSPATH) - 1))
+								(getKernelVersion() >= KernelVersion::Ventura && !strncmp(oneBinary->path, FRAMEWORKSPATH, sizeof(FRAMEWORKSPATH) - 1))
 							)
 						)
 					) {
@@ -504,14 +513,14 @@ void UserPatcher::performPagePatchForSharedCacheWithoutLookupStorage(const void 
 						// TO DO: One day we'll want to be able to create lookupStorage for patches of shared dyld cache frameworks, but not today.
 						// TO DO: check process info - for example, don't do patch on CoreDisplay framework unless the process is WindowServer
 						counterPagePatchWithoutLookupStorageMatchPath++;
-						for (size_t p = 0; p < binaryMod[i]->count; p++) {
+						for (size_t p = 0; p < oneBinary->count; p++) {
 							counterPagePatchWithoutLookupStoragePatches++;
-							if (binaryMod[i]->patches[p].section != ProcInfo::SectionDisabled) {
+							if (oneBinary->patches[p].section != ProcInfo::SectionDisabled) {
 								counterPagePatchWithoutLookupStoragePatchesEnabled++;
 								// TO DO: check cpu, flags, skip, count, segment
-								if (UNLIKELY(KernelPatcher::findAndReplace(const_cast<void *>(data_ptr), data_size, binaryMod[i]->patches[p].find, binaryMod[i]->patches[p].size, binaryMod[i]->patches[p].replace, binaryMod[i]->patches[p].size))) {
+								if (UNLIKELY(KernelPatcher::findAndReplace(const_cast<void *>(data_ptr), data_size, oneBinary->patches[p].find, oneBinary->patches[p].size, oneBinary->patches[p].replace, oneBinary->patches[p].size))) {
 									counterPagePatchWithoutLookupStorageSearchReplaceSuccess++;
-									DBGLOG("user", "performPagePatch page:%llx page_offset:%llx mod:%d patch:%d size:%d path:%s modpath:%s", (uint64_t)data_ptr, (uint64_t)page_offset, (int)i, (int)p, (int)binaryMod[i]->patches[p].size, path, binaryMod[i]->path);
+									DBGLOG("user", "performPagePatch page:%llx page_offset:%llx mod:%d patch:%d size:%d path:%s modpath:%s", (uint64_t)data_ptr, (uint64_t)page_offset, (int)binaryNdx, (int)p, (int)oneBinary->patches[p].size, path, oneBinary->path);
 								}
 							}
 						} // for patch
@@ -525,57 +534,69 @@ void UserPatcher::performPagePatchForSharedCacheWithoutLookupStorage(const void 
 void UserPatcher::performPagePatch(const void *data_ptr, size_t data_size, vnode_t vp, memory_object_offset_t page_offset) {
 	counterPagePatch++;
 	bool foundpatch = false;
-	for (size_t data_off = 0; data_off < data_size; data_off += PAGE_SIZE) {
-		size_t sz = that->lookupStorage.size();
-		size_t maybe = 0;
-		auto ptr = static_cast<const uint8_t *>(data_ptr) + data_off;
 
-		if (sz > 0) {
+	if (lookup.ready) {
+		size_t lookupsz = that->lookupStorage.size();
+		if (lookupsz > 0) {
 			counterPagePatchWithLookupStorageSize++;
-			for (size_t i = 0; i < Lookup::matchNum && maybe != sz; i++) {
-				counterPagePatchWithLookupStorageMatch++;
-				uint64_t value = *reinterpret_cast<const uint64_t *>(ptr + lookup.offs[i]);
+			for (size_t data_off = 0; data_off < data_size; data_off += PAGE_SIZE) {
+				counterPagePatchWithLookupStoragePage++;
 
-				if (i == 0) {
-					for (maybe = 0; maybe < sz; maybe++) {
-						counterPagePatchWithLookupStorageMaybe++;
-						if (lookup.c[i][maybe] == value) {
-							// We have a possible match
-							DBGLOG("user", "found a possible match for %lu of %016llX", i, OSSwapHostToBigInt64(value));
-							break;
+				auto ptr = static_cast<const uint8_t *>(data_ptr) + data_off;
+
+				// check if the page at data_off matches any of the lookup pages using the values at the four offsets chosen by loadLookups.
+				size_t maybe;
+				size_t matchNdx = 0;
+				uint64_t value = *reinterpret_cast<const uint64_t *>(ptr + lookup.offs[matchNdx]);
+				for (maybe = 0; maybe < lookupsz; maybe++) {
+					counterPagePatchWithLookupStorageMaybe++;
+					// check if first value matches
+					if (lookup.get(matchNdx, maybe) == value) {
+						DBGLOG("user", "found possible match #%lu of %016llX", matchNdx, OSSwapHostToBigInt64(value));
+						matchNdx++;
+						// if first value matches then check the other 3 values
+						for (; matchNdx < Lookup::matchNum; matchNdx++) {
+							uint64_t value2 = *reinterpret_cast<const uint64_t *>(ptr + lookup.offs[matchNdx]);
+							counterPagePatchWithLookupStorageMatch++;
+							if (lookup.get(matchNdx, maybe) == value2) {
+								DBGLOG("user", "found possible match #%lu of %016llX", matchNdx, OSSwapHostToBigInt64(value2));
+							}
+							else {
+								DBGLOG("user", "match #%lu did not match %016llX", matchNdx, OSSwapHostToBigInt64(value2));
+								if (lookup.firstValueIsUnique) {
+									// if first value is unique then don't try matching any other lookup pages
+									counterPagePatchWithLookupStorageSkipMatches++;
+									maybe = lookupsz;
+								}
+								break;
+							}
+						} // for matchNdx
+						if (matchNdx == Lookup::matchNum) {
+							counterPagePatchWithLookupStorageMatchAll4++;
+							break; // found possible match which matches all 4 values
 						}
-					}
-				} else {
-					if (lookup.c[i][maybe] != value) {
-						// We failed
-						DBGLOG("user", "failure not matching %lu of %016llX to expected %016llX", i, OSSwapHostToBigInt64(value), OSSwapHostToBigInt64(lookup.c[i][maybe]));
-						maybe = sz;
-					} else {
-						DBGLOG("user", "found a possible match for %lu of %016llX", i, OSSwapHostToBigInt64(value));
-					}
-				}
+					} // if match #0
+				} // for maybe
 
-			}
+				if (maybe < lookupsz) {
+					counterPagePatchWithLookupStorageDefinitely++;
+					auto &storage = that->lookupStorage[maybe];
 
-			if (maybe < sz) {
-				counterPagePatchWithLookupStorageDefinitely++;
-				auto &storage = that->lookupStorage[maybe];
+					// That's a patch
+					if (!memcmp(storage->page->p, ptr, PAGE_SIZE)) {
+						counterPagePatchWithLookupStoragePageMatched++;
+						for (size_t r = 0, rsz = storage->refs.size(); r < rsz; r++) {
+							// Apply the patches
+							auto &ref = storage->refs[r];
+							auto &rpatch = storage->mod->patches[ref->i];
+							size_t pageoffsz = ref->pageOffs.size();
 
-				// That's a patch
-				if (!memcmp(storage->page->p, ptr, PAGE_SIZE)) {
-					counterPagePatchWithLookupStoragePageMatched++;
-					for (size_t r = 0, rsz = storage->refs.size(); r < rsz; r++) {
-						// Apply the patches
-						auto &ref = storage->refs[r];
-						auto &rpatch = storage->mod->patches[ref->i];
-						sz = ref->pageOffs.size();
+							// Skip patches that are meant to apply only to select processes.
+							if (rpatch.flags & LocalOnly) {
+								continue;
+							}
 
-						// Skip patches that are meant to apply only to select processes.
-						if (rpatch.flags & LocalOnly) {
-							continue;
-						}
-
-						DBGLOG("user", "found what we are looking for %02X %02X %02X %02X %02X %02X %02X %02X", rpatch.find[0],
+							DBGLOG("user", "found what we are looking for %02X %02X %02X %02X %02X %02X %02X %02X", rpatch.find[0],
 								rpatch.size > 1 ? rpatch.find[1] : 0xff,
 								rpatch.size > 2 ? rpatch.find[2] : 0xff,
 								rpatch.size > 3 ? rpatch.find[3] : 0xff,
@@ -583,52 +604,57 @@ void UserPatcher::performPagePatch(const void *data_ptr, size_t data_size, vnode
 								rpatch.size > 5 ? rpatch.find[5] : 0xff,
 								rpatch.size > 6 ? rpatch.find[6] : 0xff,
 								rpatch.size > 7 ? rpatch.find[7] : 0xff
-						);
+							);
 
-						if (sz > 0 && MachInfo::setKernelWriting(true, KernelPatcher::kernelWriteLock) == KERN_SUCCESS) {
-							DBGLOG("user", "obtained write permssions");
+							if (pageoffsz > 0 && MachInfo::setKernelWriting(true, KernelPatcher::kernelWriteLock) == KERN_SUCCESS) {
+								DBGLOG("user", "obtained write permssions");
 
-							for (size_t i = 0; i < sz; i++) {
-								uint8_t *patch = const_cast<uint8_t *>(ptr + ref->pageOffs[i]);
+								for (size_t i = 0; i < pageoffsz; i++) {
+									uint8_t *patch = const_cast<uint8_t *>(ptr + ref->pageOffs[i]);
 
-								switch(rpatch.size) {
-									case sizeof(uint8_t):
-										*const_cast<uint8_t *>(patch) = *rpatch.replace;
-										break;
-									case sizeof(uint16_t):
-										*reinterpret_cast<uint16_t *>(patch) = *reinterpret_cast<const uint16_t *>(rpatch.replace);
-										break;
-									case sizeof(uint32_t):
-										*reinterpret_cast<uint32_t *>(patch) = *reinterpret_cast<const uint32_t *>(rpatch.replace);
-										break;
-									case sizeof(uint64_t):
-										*reinterpret_cast<uint64_t *>(patch) = *reinterpret_cast<const uint64_t *>(rpatch.replace);
-										break;
-									default:
-										DBGLOG("user", "memcpy dst:0x%llX size:%d", (uint64_t)patch, (int)rpatch.size);
-										lilu_os_memcpy(patch, rpatch.replace, rpatch.size);
+									switch(rpatch.size) {
+										case sizeof(uint8_t):
+											*const_cast<uint8_t *>(patch) = *rpatch.replace;
+											break;
+										case sizeof(uint16_t):
+											*reinterpret_cast<uint16_t *>(patch) = *reinterpret_cast<const uint16_t *>(rpatch.replace);
+											break;
+										case sizeof(uint32_t):
+											*reinterpret_cast<uint32_t *>(patch) = *reinterpret_cast<const uint32_t *>(rpatch.replace);
+											break;
+										case sizeof(uint64_t):
+											*reinterpret_cast<uint64_t *>(patch) = *reinterpret_cast<const uint64_t *>(rpatch.replace);
+											break;
+										default:
+											DBGLOG("user", "memcpy dst:0x%llX size:%d", (uint64_t)patch, (int)rpatch.size);
+											lilu_os_memcpy(patch, rpatch.replace, rpatch.size);
+									}
+
+									char path[PATH_MAX];
+									int pathlen = PATH_MAX;
+									if (vn_getpath(vp, path, &pathlen) != 0) path[0] = '\0';
+									DBGLOG("user", "performPagePatch page:%llx page_offset:%llx patch:%d size:%d path:%s modpath:%s", (uint64_t)data_ptr, (uint64_t)page_offset, (int)ref->i, (int)rpatch.size, path, storage->mod->path);
+									foundpatch = true;
+									counterPagePatchWithLookupStorageReplaceSuccess++;
 								}
-								
-								char path[PATH_MAX];
-								int pathlen = PATH_MAX;
-								if (vn_getpath(vp, path, &pathlen) != 0) path[0] = '\0';
-								DBGLOG("user", "performPagePatch page:%llx page_offset:%llx patch:%d size:%d path:%s modpath:%s", (uint64_t)data_ptr, (uint64_t)page_offset, (int)ref->i, (int)rpatch.size, path, storage->mod->path);
-								foundpatch = true;
-								counterPagePatchWithLookupStorageReplaceSuccess++;
-							}
 
-							if (MachInfo::setKernelWriting(false, KernelPatcher::kernelWriteLock) == KERN_SUCCESS) {
-								DBGLOG("user", "restored write permssions");
+								if (MachInfo::setKernelWriting(false, KernelPatcher::kernelWriteLock) == KERN_SUCCESS) {
+									DBGLOG("user", "restored write permssions");
+								}
+							} else {
+								SYSLOG("user", "failed to obtain write permssions for ref #%lu", r);
 							}
-						} else {
-							SYSLOG("user", "failed to obtain write permssions for %lu", sz);
-						}
+						} // for ref
+					} // if memcmp page
+					else {
+						DBGLOG("user", "failed to match a complete page for lookup #%lu", maybe);
 					}
-				} else {
-					DBGLOG("user", "failed to match a complete page with %lu", maybe);
-				}
-			}
-		}
+				} // if maybe
+			} // for data_off
+		} // if lookupSz > 0
+	} // if lookup.ready
+	else {
+		counterLookupIsNotReady++;
 	}
 	if (!foundpatch) {
 		performPagePatchForSharedCacheWithoutLookupStorage(data_ptr, data_size, vp, page_offset);
@@ -1217,19 +1243,19 @@ size_t UserPatcher::mapAddresses(const char *mapBuf, MapEntry *mapEntries, size_
 	size_t nfound = 0;
 	const char *ptr = mapBuf;
 	while (*ptr) {
-			MapEntry *currEntry = nullptr;
+		MapEntry *currEntry = nullptr;
 
 		//const char *lineStart = ptr;
 
-			for (size_t j = 0; j < nentries; j++) {
-				if (!mapEntries[j].filename)
-					continue;
+		for (size_t j = 0; j < nentries; j++) {
+			if (!mapEntries[j].filename)
+				continue;
 			if (!strncmp(ptr, mapEntries[j].filename, mapEntries[j].length)) {
-					currEntry = &mapEntries[j];
+				currEntry = &mapEntries[j];
 				ptr += mapEntries[j].length;
-					break;
-				}
+				break;
 			}
+		}
 
 		// find section mappings or next line
 		for (; *ptr && *ptr != '\n'; ptr++) {};
@@ -1238,7 +1264,7 @@ size_t UserPatcher::mapAddresses(const char *mapBuf, MapEntry *mapEntries, size_
 		//DBGLOG("user", "line: %.*s", (int)(ptr - lineStart), lineStart);
 		ptr++;
 
-			if (currEntry) {
+		if (currEntry) {
 			bool foundSection = false;
 			for (; *ptr == '\t'; ptr++) { // iterate section mappings
 				// find section name
@@ -1309,10 +1335,12 @@ bool UserPatcher::loadDyldSharedCacheMapping() {
 	if (buffer && bufferSize > 0) {
 		auto entries = Buffer::create<MapEntry>(binaryModSize);
 		if (entries) {
-			for (size_t i = 0; i < binaryModSize; i++) {
-				entries[i].filename = binaryMod[i]->path;
-				entries[i].length = strlen(binaryMod[i]->path);
-				entries[i].startTEXT = entries[i].endTEXT = entries[i].startDATA = entries[i].endDATA = 0;
+			for (size_t binaryNdx = 0; binaryNdx < binaryModSize; binaryNdx++) {
+				BinaryModInfo *oneBinary = binaryMod[binaryNdx];
+				MapEntry *entry = &entries[binaryNdx];
+				entry->filename = oneBinary->path;
+				entry->length = strlen(oneBinary->path);
+				entry->startTEXT = entry->endTEXT = entry->startDATA = entry->endDATA = 0;
 			}
 
 			size_t nEntries = mapAddresses(reinterpret_cast<char *>(buffer), entries, binaryModSize);
@@ -1320,15 +1348,18 @@ bool UserPatcher::loadDyldSharedCacheMapping() {
 			if (nEntries > 0) {
 				DBGLOG("user", "mapped %lu entries out of %lu", nEntries, binaryModSize);
 
-				for (size_t i = 0; i < binaryModSize; i++) {
-					DBGLOG("user", "entry:%d TEXT:%llX..%llX DATA:%llX..%llX path:%s", (int)i,
-						(uint64_t)entries[i].startTEXT, (uint64_t)entries[i].endTEXT,
-						(uint64_t)entries[i].startDATA, (uint64_t)entries[i].endDATA,
-						entries[i].filename ? entries[i].filename : "NULL");
-					binaryMod[i]->startTEXT = entries[i].startTEXT;
-					binaryMod[i]->endTEXT = entries[i].endTEXT;
-					binaryMod[i]->startDATA = entries[i].startDATA;
-					binaryMod[i]->endDATA = entries[i].endDATA;
+				for (size_t binaryNdx = 0; binaryNdx < binaryModSize; binaryNdx++) {
+					BinaryModInfo *oneBinary = binaryMod[binaryNdx];
+					MapEntry *entry = &entries[binaryNdx];
+					DBGLOG("user", "entry:%d TEXT:%llX..%llX DATA:%llX..%llX path:%s", (int)binaryNdx,
+						(uint64_t)entry->startTEXT, (uint64_t)entry->endTEXT,
+						(uint64_t)entry->startDATA, (uint64_t)entry->endDATA,
+						entry->filename ? entry->filename : "NULL"
+					);
+					oneBinary->startTEXT = entry->startTEXT;
+					oneBinary->endTEXT   = entry->endTEXT;
+					oneBinary->startDATA = entry->startDATA;
+					oneBinary->endDATA   = entry->endDATA;
 				}
 
 				res = true;
@@ -1355,52 +1386,51 @@ bool UserPatcher::loadDyldSharedCacheMapping() {
 bool UserPatcher::loadFilesForPatching() {
 	DBGLOG("user", "[ UserPatcher::loadFilesForPatching binaryModSize:%lu", binaryModSize);
 
-	for (size_t i = 0; i < binaryModSize; i++) {
-		bool hasPatches = false;
+	for (size_t binaryNdx = 0; binaryNdx < binaryModSize; binaryNdx++) {
+		BinaryModInfo *oneBinary = binaryMod[binaryNdx];
+		size_t patchesToApply = 0;
 
-		for (size_t p = 0; p < binaryMod[i]->count; p++) {
-			if (binaryMod[i]->patches[p].section != ProcInfo::SectionDisabled) {
-				hasPatches = true;
-				break;
+		for (size_t patchNdx = 0; patchNdx < oneBinary->count; patchNdx++) {
+			auto &patch = oneBinary->patches[patchNdx];
+			if (patch.section != ProcInfo::SectionDisabled) {
+				patchesToApply++;
 			}
 		}
 
-		if (hasPatches) {
-			DBGLOG("user", "[ requesting file %s at %lu", binaryMod[i]->path, i);
+		if (patchesToApply) {
+			DBGLOG("user", "[ %lu of %lu patches to apply for binary #%lu: %s", patchesToApply, oneBinary->count, binaryNdx, oneBinary->path);
 		} else {
-			DBGLOG("user", "[] ignoring file %s at %lu, no mods out of %lu apply", binaryMod[i]->path, i, binaryMod[i]->count);
+			DBGLOG("user", "[] %lu of %lu patches to apply for binary #%lu: %s", patchesToApply, oneBinary->count, binaryNdx, oneBinary->path);
 			continue;
 		}
 
 		size_t fileSize;
-		auto buf = FileIO::readFileToBuffer(binaryMod[i]->path, fileSize);
+		auto buf = FileIO::readFileToBuffer(oneBinary->path, fileSize);
 		if (buf) {
 			vm_address_t vmsegment {0};
 			vm_address_t vmsection {0};
 			void *sectionptr {nullptr};
 			size_t size {0};
 
-			DBGLOG("user", "have %lu mods for %s (fileSize:%lu)", binaryMod[i]->count, binaryMod[i]->path, fileSize);
-
-			for (size_t p = 0; p < binaryMod[i]->count; p++) {
-				auto &patch = binaryMod[i]->patches[p];
+			for (size_t patchNdx = 0; patchNdx < oneBinary->count; patchNdx++) {
+				auto &patch = oneBinary->patches[patchNdx];
 
 				if (patch.section == ProcInfo::SectionDisabled) {
-					DBGLOG("user", "[] skipping not requested patch %s for %lu", binaryMod[i]->path, p);
+					DBGLOG("user", "[] skipping patch #%lu (disabled)", patchNdx);
 					continue;
 				}
 
 				if (patch.segment >= FileSegment::SegmentTotal) {
-					SYSLOG("user", "[] skipping patch %s for %lu with invalid segment id %u", binaryMod[i]->path, p, patch.segment);
+					SYSLOG("user", "[] skipping patch #%lu (invalid segment id %u)", patchNdx, patch.segment);
 					continue;
 				}
 
-				DBGLOG("user", "[ mod %lu", p);
-				
+				DBGLOG("user", "[ patch #%lu", patchNdx);
+
 				MachInfo::findSectionBounds(buf, fileSize, vmsegment, vmsection, sectionptr, size,
 											fileSegments[patch.segment], fileSections[patch.segment], patch.cpu);
 
-				DBGLOG("user", "findSectionBounds returned vmsegment %llX vmsection %llX sectionptr %p size %lu", (uint64_t)vmsegment, (uint64_t)vmsection, sectionptr, size);
+				DBGLOG("user", "section bounds = vmsegment:0x%llx vmsection:0x%llx sectionptr:%p size:%lu", (uint64_t)vmsegment, (uint64_t)vmsection, sectionptr, size);
 
 				if (size) {
 					uint8_t *start = reinterpret_cast<uint8_t *>(sectionptr);
@@ -1408,42 +1438,42 @@ bool UserPatcher::loadFilesForPatching() {
 					size_t skip = patch.skip;
 					size_t count = patch.count;
 
-					DBGLOG("user", "this patch will start from %lu entry and will replace %lu findings", skip, count);
+					DBGLOG("user", "will patch up to %lu matches starting from match #%lu", count, skip);
 
 					while (start < end && count) {
 						if (!memcmp(start, patch.find, patch.size)) {
-							DBGLOG("user", "found entry of %02X %02X %02X %02X patch", patch.find[0], patch.find[1], patch.find[2], patch.find[3]);
+							DBGLOG("user", "found matching bytes %02X %02X %02X %02X ...%s", patch.find[0], patch.find[1], patch.find[2], patch.find[3], skip ? " (will skip)" : "");
 
 							if (skip == 0) {
-								off_t sectOff = start - reinterpret_cast<uint8_t *>(sectionptr);
-								vm_address_t vmpage = (vmsection + (vm_address_t)sectOff) & -PAGE_SIZE;
-								vm_address_t pageOff = vmpage - vmsection;
-								off_t valueOff = reinterpret_cast<uintptr_t>(start - pageOff - reinterpret_cast<uintptr_t>(sectionptr));
-								off_t segOff = vmsection-vmsegment+sectOff;
+								off_t sectOff = start - reinterpret_cast<uint8_t *>(sectionptr); // offset in section of match
+								vm_address_t vmpage = (vmsection + sectOff) & -PAGE_SIZE; // vmpage containing match
+								vm_address_t pageOff = vmpage - vmsection; // offset in section of page containing match
+								off_t valueOff = sectOff - pageOff; // offset in page of match
+								off_t segOff = vmsection + sectOff - vmsegment; // offset in segment of match
 
-								DBGLOG("user", "using it off %llX pageOff %llX new %llX segOff %llX", sectOff, (uint64_t)pageOff, (uint64_t)vmpage, segOff);
+								DBGLOG("user", "sectOff:0x%llx pageOff:0x%llx vmpage:0x%llx valueOff:0x%llx segOff:0x%llx", sectOff, (uint64_t)pageOff, (uint64_t)vmpage, valueOff, segOff);
 
-								// We need binary entry, i.e. the page our patch belong to
+								// We need binary entry, i.e. the page our patch belongs to
 								LookupStorage *entry = nullptr;
 								for (size_t e = 0, esz = lookupStorage.size(); e < esz && !entry; e++) {
-									if (lookupStorage[e]->pageOff == static_cast<vm_address_t>(pageOff))
+									if (lookupStorage[e]->mod == oneBinary && lookupStorage[e]->section == patch.segment && lookupStorage[e]->pageOff == static_cast<vm_address_t>(pageOff))
 										entry = lookupStorage[e];
 								}
-
 
 								if (!entry) {
 									entry = LookupStorage::create();
 									if (entry) {
-										entry->mod = binaryMod[i];
+										entry->mod = oneBinary;
+										entry->section = patch.segment;
+										entry->pageOff = pageOff;
 										if (!entry->page->alloc()) {
 											LookupStorage::deleter(entry);
+											DBGLOG("user", "failed to alloc page");
 											entry = nullptr;
 										} else {
-											// One could find entries by flooring first ref address but that's unreasonably complicated
-											entry->pageOff = pageOff;
 											// Now copy page data
 											lilu_os_memcpy(entry->page->p, reinterpret_cast<uint8_t *>(sectionptr) + pageOff, PAGE_SIZE);
-											DBGLOG("user", "first page bytes are %02X %02X %02X %02X %02X %02X %02X %02X",
+											DBGLOG("user", "first bytes of page are %02X %02X %02X %02X %02X %02X %02X %02X",
 												entry->page->p[0], entry->page->p[1], entry->page->p[2], entry->page->p[3],
 												entry->page->p[4], entry->page->p[5], entry->page->p[6], entry->page->p[7]);
 											// Save entry in lookupStorage
@@ -1466,12 +1496,11 @@ bool UserPatcher::loadFilesForPatching() {
 								// Happens when a patch has 2+ replacements and they are close to each other.
 								LookupStorage::PatchRef *ref = nullptr;
 								for (size_t r = 0, rsz = entry->refs.size(); r < rsz && !ref; r++) {
-									if (entry->refs[r]->i == p) {
+									if (entry->refs[r]->i == patchNdx) {
 										ref = entry->refs[r];
+										DBGLOG("user", "ref found");
 									}
 								}
-
-								DBGLOG("user", "ref find %d", ref != nullptr);
 
 								// Or add a new patch reference
 								if (!ref) {
@@ -1480,7 +1509,7 @@ bool UserPatcher::loadFilesForPatching() {
 										SYSLOG("user", "failed to allocate memory for PatchRef");
 										continue;
 									}
-									ref->i = p; // Set the reference patch
+									ref->i = patchNdx; // Set the reference patch
 									if (!entry->refs.push_back<2>(ref)) {
 										SYSLOG("user", "failed to insert PatchRef");
 										LookupStorage::PatchRef::deleter(ref);
@@ -1489,7 +1518,7 @@ bool UserPatcher::loadFilesForPatching() {
 								}
 
 								if (ref) {
-									DBGLOG("user", "pushing off %llX to patch", valueOff);
+									DBGLOG("user", "pushing page offset 0x%llx to patch", valueOff);
 									// These values belong to the current ref
 									ref->pageOffs.push_back<2>(valueOff);
 									ref->segOffs.push_back<2>(segOff);
@@ -1504,7 +1533,7 @@ bool UserPatcher::loadFilesForPatching() {
 				} else {
 					SYSLOG("user", "failed to obtain a corresponding section");
 				}
-				DBGLOG("user", "] mod %lu", p);
+				DBGLOG("user", "] patch #%lu", patchNdx);
 			} // for patch
 
 			Buffer::deleter(buf);
@@ -1519,69 +1548,63 @@ bool UserPatcher::loadLookups() {
 	DBGLOG("user", "[ UserPatcher::loadLookups");
 	uint32_t off = 0;
 
-	for (size_t i = 0; i < Lookup::matchNum; i++) {
-		auto &lookupCurr = lookup.c[i];
+	lookup.init(lookupStorage.size());
 
-		DBGLOG("user", "loading lookup %lu current off is %X", i, off);
+	// obtain four lookup values from each lookup page.
+	for (size_t matchNdx = 0; matchNdx < Lookup::matchNum; matchNdx++) {
 
-		auto obtainValues = [&lookupCurr, &off, this]() {
-			for (size_t p = 0; p < lookupStorage.size(); p++) {
-				uint64_t val = *reinterpret_cast<uint64_t *>(lookupStorage[p]->page->p + off);
-				if (p >= lookupCurr.size()) {
-					lookupCurr.push_back<2>(val);
-				} else {
-					lookupCurr[p] = val;
-				}
+		// save a value from every lookup page at the same offset into lookupCurr
+		auto obtainValues = [&matchNdx, &off, this]() {
+			// loop through all the lookup pages (these are pages read from files and have one or more matches)
+			for (size_t p = 0; p < lookup.lookupCount; p++) {
+				// val is value at offset of lookup page
+				lookup.set(matchNdx, p, *reinterpret_cast<uint64_t *>(lookupStorage[p]->page->p + off));
 			}
 		};
 
-		auto hasSameValues = [&lookupCurr]() {
-			for (size_t i = 0, sz = lookupCurr.size(); i < sz; i++) {
+		// returns true if any lookup page has the same value at the offset as another lookup page
+		// returns false if all the lookup pages have a unique value at the offset
+		auto hasSameValues = [&matchNdx, this]() {
+			for (size_t i = 0, sz = lookup.lookupCount; i < sz; i++) {
 				for (size_t j = i + 1; j < sz; j++) {
-					if (lookupCurr[i] == lookupCurr[j]) {
+					if (lookup.get(matchNdx, i) == lookup.get(matchNdx, j)) {
 						return true;
 					}
 				}
 			}
-
 			return false;
 		};
 
-		// First match must choose a page
-		if (i == 0) {
-			// Find non matching off
+		if (matchNdx == 0) {
+			// find offset where the values at that offset in all the lookup pages are unique
 			while (off < PAGE_SIZE) {
-				// Obtain values
 				obtainValues();
-
+				lookup.offs[matchNdx] = off;
 				if (!hasSameValues()) {
-					DBGLOG("user", "successful finding at %X", off);
-					lookup.offs[i] = off;
+					DBGLOG("user", "match #0 offset 0x%x; all lookup pages have unique values at this offset", off);
+					lookup.firstValueIsUnique = true;
 					break;
 				}
-
 				off += sizeof(uint64_t);
+			}
+			if (off >= PAGE_SIZE) {
+				off = lookup.offs[matchNdx];
+				DBGLOG("user", "match #0 offset 0x%X; there is no offset where all lookup pages contain a unique value!", off);
+				lookup.firstValueIsUnique = false;
 			}
 		} else {
-			if (off == PAGE_SIZE) {
-				DBGLOG("user", "resetting off to 0");
-				off = 0;
-			}
-
-			if (off == lookup.offs[0]) {
-				DBGLOG("user", "matched off %X with 0th", off);
-				off += sizeof(uint64_t);
-			}
-
-			DBGLOG("user", "chose %X", off);
-
+			DBGLOG("user", "match #%lu offset 0x%X", matchNdx, off);
 			obtainValues();
-			lookup.offs[i] = off;
-
-			off += sizeof(uint64_t);
+			lookup.offs[matchNdx] = off;
 		}
-
+		off += sizeof(uint64_t);
+		if (off == PAGE_SIZE) {
+			DBGLOG("user", "resetting offset to 0");
+			off = 0;
+		}
 	}
+
+	lookup.setReady();
 
 	DBGLOG("user", "] UserPatcher::loadLookups true");
 	return true;
