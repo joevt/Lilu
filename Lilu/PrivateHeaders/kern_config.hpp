@@ -119,29 +119,14 @@ private:
 	static void policyInitBSD(mac_policy_conf *conf);
 
 	/**
-	 *  Console initialisation wrapper used for signaling Lilu to end plugin loading.
-	 *
-	 *  @param info   video information
-	 *  @param op     operation to perform
-	 *
-	 *  @return 0 on success
+	 *  wrapper functions
 	 */
-	static int initConsole(PE_Video *info, int op);
-
-	/**
-	 *  PE_parse_boot_argn wrapper for finding valid boot-args or when a boot-arg is used.
-	 */
-	static boolean_t wrap_PE_parse_boot_argn(const char *arg_string, void *arg_ptr, int max_arg);
-
-	/**
-	 *  serial_init wrapper for initializing serial port output in case macOS doesn't do it automatically.
-	 */
-	static int wrap_serial_init( void );
-	
-	/**
-	 *  serial_keyboard_init wrapper used for signaling Lilu when rootvnode is available for reading files.
-	 */
-	static void wrap_serial_keyboard_init(void);
+	static int wrap_PE_initialize_console(PE_Video *info, int op); // for signaling Lilu to end plugin loading
+	static boolean_t wrap_PE_parse_boot_argn(const char *arg_string, void *arg_ptr, int max_arg); // for finding valid boot-args or when a boot-arg is used
+	static int wrap_serial_init( void ); // for initializing serial port output in case macOS doesn't do it automatically
+	static void wrap_console_write(char *str, int size); // for outputing IOLog and printf to kprintf
+	static void wrap_console_printbuf_putc(int ch, void * arg); // for outputing IOLog and printf to kprintf
+	static void wrap_serial_keyboard_init(void); // for signaling Lilu when rootvnode is available for reading files
 
 #if defined(__x86_64__)
 	/**
@@ -158,23 +143,13 @@ private:
 	IOLock *policyLock {nullptr};
 
 	/**
-	 *  Original function pointer for PE_initialize_console.
+	 *  Original function pointers
 	 */
-	mach_vm_address_t orgInitConsole {0};
-
-	/**
-	 *  Original function pointer for PE_parse_boot_argn.
-	 */
+	mach_vm_address_t org_PE_initialize_console {0};
 	mach_vm_address_t org_PE_parse_boot_argn {0};
-	
-	/**
-	 *  Original function pointer for serial_init.
-	 */
 	mach_vm_address_t org_serial_init {0};
-	
-	/**
-	 *  Original function pointer for serial_keyboard_init.
-	 */
+	mach_vm_address_t org_console_write {0};
+	mach_vm_address_t org_console_printbuf_putc {0};
 	mach_vm_address_t org_serial_keyboard_init {0};
 
 #ifdef DEBUG
