@@ -79,7 +79,9 @@ Configuration ADDPR(config);
 static bool * disable_serial_output = NULL;
 static bool * disable_iolog_serial_output = NULL;
 static unsigned int * debug_boot_arg = NULL;
+
 static bool log_PE_parse_boot_argn = false;
+static int log_to_kprintf = 0;
 
 bool Configuration::performEarlyInit() {
 	DBGLOG("config", "[ Configuration::performEarlyInit");
@@ -104,11 +106,14 @@ bool Configuration::performEarlyInit() {
 	);
 	
 	log_PE_parse_boot_argn = checkKernelArgument("-logbootarg");
+	lilu_get_boot_args("logtokprintf", &log_to_kprintf, sizeof(log_to_kprintf));
 	
 	KernelPatcher::RouteRequest requests[] = {
-		{"_PE_initialize_console", initConsole, orgInitConsole},
+		{"_PE_initialize_console", wrap_PE_initialize_console, org_PE_initialize_console},
 		{"_PE_parse_boot_argn", wrap_PE_parse_boot_argn, org_PE_parse_boot_argn},
 		{"_serial_init", wrap_serial_init, org_serial_init},
+		{"_console_write", wrap_console_write, org_console_write},
+		{"_console_printbuf_putc", wrap_console_printbuf_putc, org_console_printbuf_putc},
 	};
 	
 	if (!kernelPatcher.routeMultiple(KernelPatcher::KernelID, requests, arrsize(requests), 0, 0, true, false)) {
@@ -127,12 +132,12 @@ bool Configuration::performEarlyInit() {
 	return true;
 }
 
-int Configuration::initConsole(PE_Video *info, int op) {
+int Configuration::wrap_PE_initialize_console(PE_Video *info, int op) {
 	DBGLOG("config", "PE_initialize_console %d", op);
 	if (op == kPEEnableScreen && !atomic_load_explicit(&ADDPR(config).initialised, memory_order_relaxed)) {
 		IOLockLock(ADDPR(config).policyLock);
 		if (!atomic_load_explicit(&ADDPR(config).initialised, memory_order_relaxed)) {
-			DBGLOG("config", "[ Configuration::initConsole %d performing init", op);
+			DBGLOG("config", "[ Configuration::wrap_PE_initialize_console %d performing init", op);
 
 			// Complete plugin registration and mark ourselves as loaded ahead of time to avoid race conditions.
 			lilu.finaliseRequests();
@@ -146,11 +151,11 @@ int Configuration::initConsole(PE_Video *info, int op) {
 			if (thread)
 				thread_call_enter1(thread, thread);
 
-			DBGLOG("config", "] Configuration::initConsole");
+			DBGLOG("config", "] Configuration::wrap_PE_initialize_console");
 		}
 		IOLockUnlock(ADDPR(config).policyLock);
 	}
-	return FunctionCast(initConsole, ADDPR(config).orgInitConsole)(info, op);
+	return FunctionCast(wrap_PE_initialize_console, ADDPR(config).org_PE_initialize_console)(info, op);
 }
 
 boolean_t Configuration::wrap_PE_parse_boot_argn(const char *arg_string, void *arg_ptr, int max_arg) {
@@ -165,6 +170,18 @@ int Configuration::wrap_serial_init( void ) {
 	int result = FunctionCast(wrap_serial_init, ADDPR(config).org_serial_init)();
 	DBGLOG("config", "[] serial_init result:%d", result);
 	return result;
+}
+
+void Configuration::wrap_console_write(char *str, int size) {
+	FunctionCast(wrap_console_write, ADDPR(config).org_console_write)(str, size);
+	if (log_to_kprintf == 1)
+		kprintf("%.*s", size, str);
+}
+
+void Configuration::wrap_console_printbuf_putc(int ch, void * arg) {
+	FunctionCast(wrap_console_printbuf_putc, ADDPR(config).org_console_printbuf_putc)(ch, arg);
+	if (log_to_kprintf == 2 && PE_kputc)
+		PE_kputc(ch);
 }
 
 /*
