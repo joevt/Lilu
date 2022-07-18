@@ -126,7 +126,8 @@ private:
 	static int wrap_serial_init( void ); // for initializing serial port output in case macOS doesn't do it automatically
 	static void wrap_console_write(char *str, int size); // for outputing IOLog and printf to kprintf
 	static void wrap_console_printbuf_putc(int ch, void * arg); // for outputing IOLog and printf to kprintf
-	static void wrap_serial_keyboard_init(void); // for signaling Lilu when rootvnode is available for reading files
+	static void wrap_serial_keyboard_init(void); // for signaling Lilu when rootvnode / is available for reading files such as the dyld shared cache map
+	static int wrap_graftdmg(proc_t p, struct graftdmg_args* uap, int32_t* retval); // For Ventura, for reading dyld shared cache map - /System/Volumes/Preboot is mounted at this time
 
 #if defined(__x86_64__)
 	/**
@@ -151,6 +152,7 @@ private:
 	mach_vm_address_t org_console_write {0};
 	mach_vm_address_t org_console_printbuf_putc {0};
 	mach_vm_address_t org_serial_keyboard_init {0};
+	mach_vm_address_t org_graftdmg {0};
 
 #ifdef DEBUG
 	/**
