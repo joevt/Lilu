@@ -190,7 +190,7 @@ We can affect the start time of Lilu::start by changing IOResourceMatch in Info.
 - IOResourceMatch "IOBSD" is too early to have rootvnode (required for UserPatcher::loadFilesForPatching)
 - IOResourceMatch "boot-uuid-media" is also too early
 - IOResourceMatch "IOConsoleUsers" is too late - WindowServer has already loaded
-To solve this, we trap serial_keyboard_init in performCommonInit - it happens very early but not too early; rootvnode will have been initialized by bsd_init by that time.
+To solve this, we trap serial_keyboard_init or graftdmg in performCommonInit - it happens very early but not too early; rootvnode will have been initialized by bsd_init by that time.
 */
 
 static bool userReady = false;
@@ -200,10 +200,26 @@ static void ** rootvnodePtr = NULL; // set before wrap_serial_keyboard_init is c
 void Configuration::wrap_serial_keyboard_init(void) {
 	DBGLOG("config", "[ Configuration::wrap_serial_keyboard_init");
 	FunctionCast(wrap_serial_keyboard_init, ADDPR(config).org_serial_keyboard_init)();
+	
+	if (!ADDPR(config).org_graftdmg) {
+		IOLockLock(ADDPR(config).policyLock);
+		ADDPR(config).processUserLoadCallbacks();
+		IOLockUnlock(ADDPR(config).policyLock);
+	}
+	
+	DBGLOG("config", "] Configuration::wrap_serial_keyboard_init");
+}
+
+int Configuration::wrap_graftdmg(proc_t p, struct graftdmg_args* uap, int32_t* retval) {
+	DBGLOG("config", "[ Configuration::wrap_graftdmg");
+	int result = FunctionCast(wrap_graftdmg, ADDPR(config).org_graftdmg)(p, uap, retval);
+
 	IOLockLock(ADDPR(config).policyLock);
 	ADDPR(config).processUserLoadCallbacks();
 	IOLockUnlock(ADDPR(config).policyLock);
-	DBGLOG("config", "] Configuration::wrap_serial_keyboard_init");
+
+	DBGLOG("config", "] Configuration::wrap_graftdmg result:%d", result);
+	return result;
 }
 
 void Configuration::processUserLoadCallbacks() {
@@ -223,9 +239,12 @@ void Configuration::processUserLoadCallbacks() {
 bool Configuration::performCommonInit() {
 	DBGLOG("config", "[ Configuration::performCommonInit");
 
-	KernelPatcher::RouteRequest request {"_serial_keyboard_init", wrap_serial_keyboard_init, org_serial_keyboard_init};
-	if (!kernelPatcher.routeMultiple(KernelPatcher::KernelID, &request, 1, 0, 0, true, false)) {
-		SYSLOG("config", "failed to patch serial_keyboard_init for user patching");
+	KernelPatcher::RouteRequest requests[] = {
+		{"_serial_keyboard_init", wrap_serial_keyboard_init, org_serial_keyboard_init},
+		{"_graftdmg", wrap_graftdmg, org_graftdmg}
+	};
+	if (!kernelPatcher.routeMultiple(KernelPatcher::KernelID, requests, arrsize(requests), 0, 0, true, false)) {
+		SYSLOG("config", "failed to patch serial_keyboard_init and graftdmg for user patching");
 		kernelPatcher.clearError();
 	}
 
