@@ -95,7 +95,7 @@ static UserPatcher *that {nullptr};
 */
 
 static void dump_csFlags(UInt32 flags) {
-	DBGLOG("user", "p_csflags 0x%X %s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s", flags,
+	DBGLOG("user", "p_csflags 0x%x %s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s", flags,
 		(flags & CS_VALID                 ) ?                   "VALID," : "",
 		(flags & CS_ADHOC                 ) ?                   "ADHOC," : "",
 		(flags & CS_GET_TASK_ALLOW        ) ?          "GET_TASK_ALLOW," : "",
@@ -190,16 +190,16 @@ kern_return_t UserPatcher::vmProtect(vm_map_t map, vm_offset_t start, vm_size_t 
 						!(csflags & CS_KILLED)
 					) {
 						if (csFlagsOffset == csOff) {
-							DBGLOG("user", "found p_csflags at default offset %X", (uint32_t)csFlagsOffset);
+							DBGLOG("user", "found p_csflags at default offset 0x%x", (uint32_t)csFlagsOffset);
 						}
 						else {
-							DBGLOG("user", "found p_csflags at offset %X which is not the default offset %X", (uint32_t)csOff, (uint32_t)csFlagsOffset);
+							DBGLOG("user", "found p_csflags at offset 0x%x which is not the default offset 0x%x", (uint32_t)csOff, (uint32_t)csFlagsOffset);
 							csFlagsOffset = csOff;
 						}
 						break;
 					}
 					else if (off == 0x300) {
-						SYSLOG("user", "default p_csflags has unexpected value (%X), cpu type (%X), or cpu sub type (%X)", csflags, cpu, subcpu);
+						SYSLOG("user", "default p_csflags has unexpected value (0x%x), cpu type (0x%x), or cpu sub type (0x%x)", csflags, cpu, subcpu);
 						csFlagsOffset = 0;
 					}
 				}
@@ -249,7 +249,7 @@ kern_return_t UserPatcher::vmProtect(vm_map_t map, vm_offset_t start, vm_size_t 
 				}
 			}
 			else if (csFlagsOffset) {
-				DBGLOG("user", "using p_csflags at default offset %X", (uint32_t)csFlagsOffset);
+				DBGLOG("user", "using p_csflags at default offset 0x%x", (uint32_t)csFlagsOffset);
 			}
 			else {
 				DBGLOG("user", "no p_csflags; cannot check or change p_csflags");
@@ -520,7 +520,7 @@ void UserPatcher::performPagePatchForSharedCacheWithoutLookupStorage(const void 
 								// TO DO: check cpu, flags, skip, count, segment
 								if (UNLIKELY(KernelPatcher::findAndReplace(const_cast<void *>(data_ptr), data_size, oneBinary->patches[p].find, oneBinary->patches[p].size, oneBinary->patches[p].replace, oneBinary->patches[p].size))) {
 									counterPagePatchWithoutLookupStorageSearchReplaceSuccess++;
-									DBGLOG("user", "performPagePatch page:%llx page_offset:%llx mod:%d patch:%d size:%d path:%s modpath:%s", (uint64_t)data_ptr, (uint64_t)page_offset, (int)binaryNdx, (int)p, (int)oneBinary->patches[p].size, path, oneBinary->path);
+									DBGLOG("user", "performPagePatch page:0x%llx page_offset:0x%llx mod:%d patch:%d size:%d path:%s modpath:%s", (uint64_t)data_ptr, (uint64_t)page_offset, (int)binaryNdx, (int)p, (int)oneBinary->patches[p].size, path, oneBinary->path);
 								}
 							}
 						} // for patch
@@ -626,14 +626,14 @@ void UserPatcher::performPagePatch(const void *data_ptr, size_t data_size, vnode
 											*reinterpret_cast<uint64_t *>(patch) = *reinterpret_cast<const uint64_t *>(rpatch.replace);
 											break;
 										default:
-											DBGLOG("user", "memcpy dst:0x%llX size:%d", (uint64_t)patch, (int)rpatch.size);
+											DBGLOG("user", "memcpy dst:0x%llx size:%d", (uint64_t)patch, (int)rpatch.size);
 											lilu_os_memcpy(patch, rpatch.replace, rpatch.size);
 									}
 
 									char path[PATH_MAX];
 									int pathlen = PATH_MAX;
 									if (vn_getpath(vp, path, &pathlen) != 0) path[0] = '\0';
-									DBGLOG("user", "performPagePatch page:%llx page_offset:%llx patch:%d size:%d path:%s modpath:%s", (uint64_t)data_ptr, (uint64_t)page_offset, (int)ref->i, (int)rpatch.size, path, storage->mod->path);
+									DBGLOG("user", "performPagePatch page:0x%llx page_offset:0x%llx patch:%d size:%d path:%s modpath:%s", (uint64_t)data_ptr, (uint64_t)page_offset, (int)ref->i, (int)rpatch.size, path, storage->mod->path);
 									foundpatch = true;
 									counterPagePatchWithLookupStorageReplaceSuccess++;
 								}
@@ -902,7 +902,7 @@ bool UserPatcher::injectRestrict(vm_map_t taskPort) {
 			}
 
 		} else {
-			SYSLOG("user", "unknown header magic %X", tmpHeader.magic);
+			SYSLOG("user", "unknown header magic 0x%x", tmpHeader.magic);
 		}
 	} else {
 		SYSLOG("user", "could not read target mach-o header (error %d)", err);
@@ -931,12 +931,12 @@ vm_address_t UserPatcher::injectSegment(vm_map_t taskPort, vm_address_t addr, ui
 			if (ret == KERN_SUCCESS)
 				return addr;
 			else
-				SYSLOG("user", "vm_protect final %X fail %d", prot, ret);
+				SYSLOG("user", "vm_protect final 0x%x fail %d", prot, ret);
 		} else {
 			SYSLOG("user", "vm_write_user fail %d", ret);
 		}
 	} else {
-		SYSLOG("user", "vm_protect initial %X fail %d", writeProt, ret);
+		SYSLOG("user", "vm_protect initial 0x%x fail %d", writeProt, ret);
 	}
 
 	return 0;
@@ -1052,7 +1052,7 @@ bool UserPatcher::injectPayload(vm_map_t taskPort, uint8_t *payload, size_t size
 			}
 
 		} else {
-			SYSLOG("user", "unknown header magic %X", machHeader->magic);
+			SYSLOG("user", "unknown header magic 0x%x", machHeader->magic);
 		}
 	} else {
 		SYSLOG("user", "could not read target mach-o header (error %d)", err);
@@ -1071,7 +1071,7 @@ kern_return_t UserPatcher::vmSharedRegionMapFileBigSur(vm_shared_region_t shared
 }
 
 kern_return_t UserPatcher::vmSharedRegionMapFileMavericks(vm_shared_region_t shared_region, unsigned int mappings_count, shared_file_mapping_np *mappings, memory_object_control_t file_control, memory_object_size_t file_size, void *root_dir, uint32_t slide, user_addr_t slide_start, user_addr_t slide_size) {
-	DBGLOG("user", "[ UserPatcher::vmSharedRegionMapFileMavericks slide:%X", slide);
+	DBGLOG("user", "[ UserPatcher::vmSharedRegionMapFileMavericks slide:0x%x", slide);
 	auto res = FunctionCast(vmSharedRegionMapFileMavericks, that->orgVmSharedRegionMapFile)(shared_region, mappings_count, mappings, file_control, file_size, root_dir, slide, slide_start, slide_size);
 	if (!slide) {
 		that->patchSharedCache(that->org_current_map(), 0, CPU_TYPE_X86_64);
@@ -1097,7 +1097,7 @@ kern_return_t UserPatcher::vmSharedRegionMapFileLeopard(vm_shared_region_t share
 }
 
 int UserPatcher::vmSharedRegionSlideBigSur(uint32_t slide, mach_vm_offset_t entry_start_address, mach_vm_size_t entry_size, mach_vm_offset_t slide_start, mach_vm_size_t slide_size, mach_vm_offset_t slid_mapping, memory_object_control_t sr_file_control, vm_prot_t prot) {
-	DBGLOG("user", "[ UserPatcher::vmSharedRegionSlideBigSur slide:%X start:%llX size:%llX slide_start:%llX slide_size:%llX prot:%X", slide, entry_start_address, entry_size, slide_start, slide_size, prot);
+	DBGLOG("user", "[ UserPatcher::vmSharedRegionSlideBigSur slide:0x%x start:0x%llx size:0x%llx slide_start:0x%llx slide_size:0x%llx prot:0x%x", slide, entry_start_address, entry_size, slide_start, slide_size, prot);
 	that->patchSharedCache(that->org_current_map(), slide, CPU_TYPE_X86_64);
 	int result = FunctionCast(vmSharedRegionSlideBigSur, that->orgVmSharedRegionSlide)(slide, entry_start_address, entry_size, slide_start, slide_size, slid_mapping, sr_file_control, prot);
 	DBGLOG("user", "] UserPatcher::vmSharedRegionSlideBigSur result:%d", result);
@@ -1105,7 +1105,7 @@ int UserPatcher::vmSharedRegionSlideBigSur(uint32_t slide, mach_vm_offset_t entr
 }
 
 int UserPatcher::vmSharedRegionSlideMojave(uint32_t slide, mach_vm_offset_t entry_start_address, mach_vm_size_t entry_size, mach_vm_offset_t slide_start, mach_vm_size_t slide_size, mach_vm_offset_t slid_mapping, memory_object_control_t sr_file_control) {
-	DBGLOG("user", "[ UserPatcher::vmSharedRegionSlideMojave slide:%X start:%llX size:%llX slide_start:%llX slide_size:%llX", slide, entry_start_address, entry_size, slide_start, slide_size);
+	DBGLOG("user", "[ UserPatcher::vmSharedRegionSlideMojave slide:0x%x start:0x%llx size:0x%llx slide_start:0x%llx slide_size:0x%llx", slide, entry_start_address, entry_size, slide_start, slide_size);
 	that->patchSharedCache(that->org_current_map(), slide, CPU_TYPE_X86_64);
 	int result = FunctionCast(vmSharedRegionSlideMojave, that->orgVmSharedRegionSlide)(slide, entry_start_address, entry_size, slide_start, slide_size, slid_mapping, sr_file_control);
 	DBGLOG("user", "] UserPatcher::vmSharedRegionSlideMojave result:%d", result);
@@ -1113,7 +1113,7 @@ int UserPatcher::vmSharedRegionSlideMojave(uint32_t slide, mach_vm_offset_t entr
 }
 
 int UserPatcher::vmSharedRegionSlideMavericks(uint32_t slide, mach_vm_offset_t entry_start_address, mach_vm_size_t entry_size, mach_vm_offset_t slide_start, mach_vm_size_t slide_size, memory_object_control_t sr_file_control) {
-	DBGLOG("user", "[ UserPatcher::vmSharedRegionSlideMavericks slide:%X start:%llX size:%llX slide_start:%llX slide_size:%llX", slide, entry_start_address, entry_size, slide_start, slide_size);
+	DBGLOG("user", "[ UserPatcher::vmSharedRegionSlideMavericks slide:0x%x start:0x%llx size:0x%llx slide_start:0x%llx slide_size:0x%llx", slide, entry_start_address, entry_size, slide_start, slide_size);
 	that->patchSharedCache(that->org_current_map(), slide, CPU_TYPE_X86_64);
 	int result = FunctionCast(vmSharedRegionSlideMavericks, that->orgVmSharedRegionSlide)(slide, entry_start_address, entry_size, slide_start, slide_size, sr_file_control);
 	DBGLOG("user", "] UserPatcher::vmSharedRegionSlideMavericks result:%d", result);
@@ -1121,7 +1121,7 @@ int UserPatcher::vmSharedRegionSlideMavericks(uint32_t slide, mach_vm_offset_t e
 }
 
 kern_return_t UserPatcher::vmSharedRegionSlideLion(vm_offset_t vaddr, uint32_t pageIndex) {
-	DBGLOG("user", "[ UserPatcher::vmSharedRegionSlideLion vaddr:%lX pageIndex:%X", vaddr, pageIndex);
+	DBGLOG("user", "[ UserPatcher::vmSharedRegionSlideLion vaddr:0x%lx pageIndex:0x%x", vaddr, pageIndex);
 	//that->patchSharedCache(that->org_current_map(), slide, CPU_TYPE_X86_64);
 	kern_return_t result = FunctionCast(vmSharedRegionSlideLion, that->orgVmSharedRegionSlide)(vaddr, pageIndex);
 	DBGLOG("user", "] UserPatcher::vmSharedRegionSlideLion result:%d", result);
@@ -1178,7 +1178,7 @@ void UserPatcher::patchSharedCache(vm_map_t taskPort, uint32_t slide, cpu_type_t
 			}
 
 			if (modStart && modEnd && offNum && patch.cpu == cpu) {
-				DBGLOG("user", "patch for %s in %llX %llX", mod->path, (uint64_t)modStart, (uint64_t)modEnd);
+				DBGLOG("user", "patch for %s in 0x%llx..0x%llx", mod->path, (uint64_t)modStart, (uint64_t)modEnd-1);
 				auto tmp = Buffer::create<uint8_t>(patch.size);
 				if (tmp) {
 					for (size_t k = 0; k < offNum; k++) {
@@ -1194,7 +1194,7 @@ void UserPatcher::patchSharedCache(vm_map_t taskPort, uint32_t slide, cpu_type_t
 
 									r = org_vm_map_write_user(taskPort, applyChanges ? patch.replace : patch.find, place, patch.size);
 
-									SYSLOG("user", "patching %llX -> result:%d", place, r);
+									SYSLOG("user", "patching 0x%llx -> result:%d", place, r);
 
 									r = vmProtect(taskPort, (vm_offset_t)(place & -PAGE_SIZE), PAGE_SIZE, FALSE, VM_PROT_READ|VM_PROT_EXECUTE);
 									if (r == KERN_SUCCESS)
@@ -1215,14 +1215,14 @@ void UserPatcher::patchSharedCache(vm_map_t taskPort, uint32_t slide, cpu_type_t
 							}
 						}
 
-						DBGLOG("user", "done reading patches for %llX", ref->segOffs[k]);
+						DBGLOG("user", "done reading patches for 0x%llx", ref->segOffs[k]);
 					}
 					Buffer::deleter(tmp);
 				}
 			}
 			else {
 				// startTEXT is only set for shared dyld cache frameworks so this patching method doesn't apply to non-dyld shared cache patches
-				DBGLOG("user", "not patching here because modStart:%llx modEnd:%llx offNum:%llx patch.cpu:%d cpu:%d", (uint64_t)modStart, (uint64_t)modEnd, (uint64_t)offNum, patch.cpu, cpu);
+				DBGLOG("user", "not patching here because modStart:0x%llx modEnd:0x%llx offNum:0x%llx patch.cpu:%d cpu:%d", (uint64_t)modStart, (uint64_t)modEnd, (uint64_t)offNum, patch.cpu, cpu);
 			}
 			DBGLOG("user", "] storageEntry->refs[%lld]", (uint64_t)j);
 		} // for storageEntry->refs
@@ -1351,7 +1351,7 @@ bool UserPatcher::loadDyldSharedCacheMapping() {
 				for (size_t binaryNdx = 0; binaryNdx < binaryModSize; binaryNdx++) {
 					BinaryModInfo *oneBinary = binaryMod[binaryNdx];
 					MapEntry *entry = &entries[binaryNdx];
-					DBGLOG("user", "entry:%d TEXT:%llX..%llX DATA:%llX..%llX path:%s", (int)binaryNdx,
+					DBGLOG("user", "entry:%d TEXT:0x%llx..0x%llx DATA:0x%llx..0x%llx path:%s", (int)binaryNdx,
 						(uint64_t)entry->startTEXT, (uint64_t)entry->endTEXT,
 						(uint64_t)entry->startDATA, (uint64_t)entry->endDATA,
 						entry->filename ? entry->filename : "NULL"
@@ -1589,11 +1589,11 @@ bool UserPatcher::loadLookups() {
 			}
 			if (off >= PAGE_SIZE) {
 				off = lookup.offs[matchNdx];
-				DBGLOG("user", "match #0 offset 0x%X; there is no offset where all lookup pages contain a unique value!", off);
+				DBGLOG("user", "match #0 offset 0x%x; there is no offset where all lookup pages contain a unique value!", off);
 				lookup.firstValueIsUnique = false;
 			}
 		} else {
-			DBGLOG("user", "match #%lu offset 0x%X", matchNdx, off);
+			DBGLOG("user", "match #%lu offset 0x%x", matchNdx, off);
 			obtainValues();
 			lookup.offs[matchNdx] = off;
 		}
