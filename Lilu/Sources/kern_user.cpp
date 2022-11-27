@@ -1330,7 +1330,7 @@ bool UserPatcher::loadDyldSharedCacheMapping() {
 	if (!buffer)
 		buffer = FileIO::readFileToBuffer(SharedCacheMapLegacy, bufferSize);
 
-	bool res {false};
+	bool res {true}; // this function shouldn't return false for binaries that don't exist in the shared cache.
 
 	if (buffer && bufferSize > 0) {
 		auto entries = Buffer::create<MapEntry>(binaryModSize);
@@ -1364,7 +1364,7 @@ bool UserPatcher::loadDyldSharedCacheMapping() {
 
 				res = true;
 			} else {
-				SYSLOG("user", "failed to map any entry out of %lu", binaryModSize);
+				SYSLOG("user", "failed to map any entry out of %lu (probably because they don't exist in the dyld cache)", binaryModSize);
 			}
 		} else {
 			SYSLOG("user", "failed to allocate memory for MapEntry %lu", binaryModSize);
