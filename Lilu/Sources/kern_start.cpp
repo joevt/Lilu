@@ -239,13 +239,24 @@ void Configuration::processUserLoadCallbacks() {
 bool Configuration::performCommonInit() {
 	DBGLOG("config", "[ Configuration::performCommonInit");
 
-	KernelPatcher::RouteRequest requests[] = {
-		{"_serial_keyboard_init", wrap_serial_keyboard_init, org_serial_keyboard_init},
-		{"_graftdmg", wrap_graftdmg, org_graftdmg}
-	};
-	if (!kernelPatcher.routeMultiple(KernelPatcher::KernelID, requests, arrsize(requests), 0, 0, true, false)) {
-		SYSLOG("config", "failed to patch serial_keyboard_init and graftdmg for user patching");
-		kernelPatcher.clearError();
+	{
+		KernelPatcher::RouteRequest requests[] = {
+			{"_serial_keyboard_init", wrap_serial_keyboard_init, org_serial_keyboard_init},
+		};
+		if (!kernelPatcher.routeMultiple(KernelPatcher::KernelID, requests, arrsize(requests), 0, 0, true, false)) {
+			SYSLOG("config", "failed to patch serial_keyboard_init for user patching");
+			kernelPatcher.clearError();
+		}
+	}
+
+	{
+		KernelPatcher::RouteRequest requests[] = {
+			{"_graftdmg", wrap_graftdmg, org_graftdmg}
+		};
+		if (!kernelPatcher.routeMultiple(KernelPatcher::KernelID, requests, arrsize(requests), 0, 0, true, false)) {
+			SYSLOG("config", "failed to patch graftdmg for user patching");
+			kernelPatcher.clearError();
+		}
 	}
 
 	DeviceInfo::createCached();
