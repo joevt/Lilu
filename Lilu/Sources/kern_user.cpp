@@ -1638,8 +1638,8 @@ extern "C" {
 	#define vme_start(entry) getMember<vm_map_offset_t>(entry, 16)
 	#define vme_end(entry) getMember<vm_map_offset_t>(entry, 24)
 #endif
-#define vme_max_protection(entry) (((getMember<int32_t>(entry, vme_flags_offset)) >> vme_flag_max_protection_shift) & ~(-1 << vme_flag_max_protection_size))
-#define set_vme_max_protection(entry, protection) ((getMember<int32_t>(entry, vme_flags_offset)) |= ((protection & ~(-1 << vme_flag_max_protection_size)) << vme_flag_max_protection_shift ))
+#define vme_max_protection(entry) (((getMember<int32_t>(entry, vme_flags_offset)) >> vme_flag_max_protection_shift) & ~((uint32_t)-1 << vme_flag_max_protection_size))
+#define set_vme_max_protection(entry, protection) ((getMember<int32_t>(entry, vme_flags_offset)) |= ((protection & ~((uint32_t)-1 << vme_flag_max_protection_size)) << vme_flag_max_protection_shift ))
 
 /* Change max protection */
 bool UserPatcher::vmSetMaxProtection(
