@@ -174,8 +174,9 @@ kern_return_t UserPatcher::vmProtect(vm_map_t map, vm_offset_t start, vm_size_t 
 				case KernelVersion::Mojave       : csFlagsOffset = 0x308; break;
 				case KernelVersion::Catalina     : csFlagsOffset = 0x328; break;
 				case KernelVersion::BigSur       : csFlagsOffset = 0x310; break;
-				case KernelVersion::Monterey     :
+				case KernelVersion::Monterey     :                      ; break;
 				case KernelVersion::Ventura      :                      ; break;
+				case KernelVersion::Sonoma       :                      ; break;
 			}
 			if (getKernelVersion() >= KernelVersion::Yosemite && getKernelVersion() <= KernelVersion::BigSur) {
 				// These versions have a p_cputype and p_cpusubtype at fixed offset from p_csflags
@@ -209,7 +210,17 @@ kern_return_t UserPatcher::vmProtect(vm_map_t map, vm_offset_t start, vm_size_t 
 				}
 			}
 			else if (getKernelVersion() >= KernelVersion::Monterey) {
-				void *proc_ro = getMember<void *>(currproc, (getKernelVersion() >= KernelVersion::Ventura) ? 0x18 : 0x20);
+				uint32_t proc_ro_offset;
+				switch (getKernelVersion()) {
+					case KernelVersion::Monterey     : proc_ro_offset = 0x20; break;
+					case KernelVersion::Ventura      : proc_ro_offset = 0x18; break;
+					case KernelVersion::Sonoma       : proc_ro_offset = 0x18; break;
+					default:
+						SYSLOG("user", "unknown kernel version");
+						proc_ro_offset = 0x18;
+				}
+
+				void *proc_ro = getMember<void *>(currproc, proc_ro_offset);
 				void *proc = getMember<void *>(proc_ro, 0x00);
 				if (proc == currproc) {
 					flags = &getMember<uint32_t>(proc_ro, 0x1c);
