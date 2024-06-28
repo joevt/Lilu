@@ -177,6 +177,7 @@ kern_return_t UserPatcher::vmProtect(vm_map_t map, vm_offset_t start, vm_size_t 
 				case KernelVersion::Monterey     :                      ; break;
 				case KernelVersion::Ventura      :                      ; break;
 				case KernelVersion::Sonoma       :                      ; break;
+				case KernelVersion::Sequoia      :                      ; break;
 			}
 			if (getKernelVersion() >= KernelVersion::Yosemite && getKernelVersion() <= KernelVersion::BigSur) {
 				// These versions have a p_cputype and p_cpusubtype at fixed offset from p_csflags
@@ -215,6 +216,7 @@ kern_return_t UserPatcher::vmProtect(vm_map_t map, vm_offset_t start, vm_size_t 
 					case KernelVersion::Monterey     : proc_ro_offset = 0x20; break;
 					case KernelVersion::Ventura      : proc_ro_offset = 0x18; break;
 					case KernelVersion::Sonoma       : proc_ro_offset = 0x18; break;
+					case KernelVersion::Sequoia      : proc_ro_offset = 0x18; break;
 					default:
 						SYSLOG("user", "unknown kernel version");
 						proc_ro_offset = 0x18;
