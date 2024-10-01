@@ -153,6 +153,7 @@ public:
 		 *  Unused (aka disabled) proc info section
 		 */
 		static constexpr uint32_t SectionDisabled {0};
+		static constexpr uint32_t SectionNotDisabled {1};
 
 		const char *path {nullptr};
 		uint32_t len {0};
