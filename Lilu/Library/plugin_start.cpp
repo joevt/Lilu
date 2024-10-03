@@ -32,7 +32,7 @@ IOService *PRODUCT_NAME::probe(IOService *provider, SInt32 *score) {
 	setProperty("VersionInfo", kextVersion);
 	auto service = IOService::probe(provider, score);
 	IOService *result = ADDPR(startSuccess) ? service : nullptr;
-	DBGLOG("init", "] %s::probe result:%llx", xStringify(PRODUCT_NAME), (uint64_t)result);
+	DBGLOG("init", "] %s::probe result:0x%llx", xStringify(PRODUCT_NAME), (uint64_t)result);
 	return result;
 }
 

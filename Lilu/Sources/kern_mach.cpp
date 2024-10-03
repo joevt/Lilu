@@ -242,7 +242,7 @@ mach_vm_address_t MachInfo::findKernelBase() {
 			// make sure it's the header and not some reference to the MAGIC number.
 			// 0xC is MH_FILESET, available exclusively in newer SDKs.
 			if (getKernelVersion() >= KernelVersion::BigSur && mh->filetype == 0xC && mh->flags == 0 && mh->reserved == 0) {
-				DBGLOG("mach", "found kernel nouveau mach-o header address at %llx", tmp);
+				DBGLOG("mach", "found kernel nouveau mach-o header address at 0x%llx", tmp);
 				m_kernel_collection = kernel_collection = true;
 				break;
 			}

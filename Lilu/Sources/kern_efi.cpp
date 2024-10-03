@@ -241,7 +241,7 @@ uint64_t EfiRuntimeServices::getVariable(const char16_t *name, const EFI_GUID *g
 		performEfiCall64(function, &regs, stack, sizeof(stack), &status);
 
 	if (code == KERN_SUCCESS)
-		DBGLOG("efi", "successful %s call GetVariable with response %08llX", is32BitEFI ? "efi32" : "efi64", status);
+		DBGLOG("efi", "successful %s call GetVariable with response 0x%08llX", is32BitEFI ? "efi32" : "efi64", status);
 	else
 		DBGLOG("efi", "%s call GetVariable failure %d", is32BitEFI ? "efi32" : "efi64", code);
 
