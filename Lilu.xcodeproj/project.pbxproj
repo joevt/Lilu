@@ -326,7 +326,9 @@
 				1C748C281C21952C0024EED2 /* Products */,
 				CE8D9EDF251790BB008C44E8 /* Frameworks */,
 			);
+			indentWidth = 4;
 			sourceTree = "<group>";
+			tabWidth = 4;
 			usesTabs = 1;
 		};
 		1C748C281C21952C0024EED2 /* Products */ = {
